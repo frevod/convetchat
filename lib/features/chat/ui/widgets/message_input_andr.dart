@@ -1,0 +1,238 @@
+import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
+import 'package:convetchat/features/chat/domain/entities/chat_send_restriction.dart';
+import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
+import 'package:convetchat/features/chat/ui/widgets/media_attach_sheet_andr.dart';
+import 'package:convetchat/features/chat/ui/widgets/pending_media_strip_andr.dart';
+import 'package:convetchat/features/chat/ui/widgets/record_mic_button.dart';
+import 'package:convetchat/features/chat/ui/widgets/recording_indicator.dart';
+import 'package:convetchat/features/chat/ui/widgets/reply_widget.dart';
+import 'package:convetchat/features/chat/ui/widgets/send_restriction_notice.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart';
+
+class const MessageInputAndr({super.key}) extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final cubit = context.watch<ChatCubit>();
+    final state = cubit.state;
+    final replyTo = state.replyTo;
+
+    if (state.sendRestriction != ChatSendRestriction.none) {
+      return SendRestrictionNotice(restriction: state.sendRestriction);
+    }
+
+    return SafeArea(
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainer,
+          borderRadius: .only(topLeft: .circular(18), topRight: .circular(16)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            children: [
+              if (replyTo != null)
+                ReplyWidget(
+                  reply: replyTo,
+                  onCancel: cubit.cancelReply,
+                  onTap: () => cubit.jumpToMessage(replyTo.id),
+                ),
+
+              if (state.pendingMedia.isNotEmpty)
+                PendingMediaStripAndr(
+                  items: state.pendingMedia,
+                  onRemove: cubit.removePending,
+                ),
+
+              Row(
+                crossAxisAlignment: .end,
+                children: [
+                  if (!state.isRecording)
+                    M3EButton.outlined(
+                      onPressed: () async {
+                        final picked = await MediaAttachSheetAndr.show(context);
+                        if (picked != null && picked.isNotEmpty) {
+                          await cubit.attachAssets(picked);
+                        }
+                      },
+                      decoration: const M3EButtonDecoration(
+                        fixedSize: Size(48, 48),
+                        borderRadius: 50,
+                        pressedRadius: 10,
+                        hoveredRadius: 20,
+                      ),
+                      child: Icon(Icons.add_rounded),
+                    ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        IgnorePointer(
+                          ignoring: state.isRecording,
+                          child: Opacity(
+                            opacity: state.isRecording ? 0 : 1,
+                            child: TextField(
+                              controller: cubit.inputController,
+                              focusNode: cubit.inputFocus,
+                              onTapOutside: (_) {},
+                              minLines: 1,
+                              maxLines: 5,
+                              decoration: InputDecoration(
+                                hintText: 'Сообщение',
+                                border: OutlineInputBorder(
+                                  borderRadius: .circular(24),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (state.isRecording)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                            ),
+                            child: RecordingIndicator(
+                              levels: state.recordLevels,
+                              elapsed: state.recordElapsed,
+                              showCancel: state.recordLocked,
+                              onCancel: cubit.cancelRecording,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: cubit.inputController,
+                    builder: (context, value, _) {
+                      final hasText = value.text.trim().isNotEmpty;
+                      final hasSendableMedia = state.pendingMedia.isNotEmpty;
+
+                      if (state.recordLocked) {
+                        return ExcludeFocus(
+                          child: M3EButton.filled(
+                            decoration: const M3EButtonDecoration(
+                              fixedSize: Size(48, 48),
+                              borderRadius: 50,
+                              pressedRadius: 10,
+                              hoveredRadius: 20,
+                            ),
+                            onPressed: cubit.stopRecordingAndSend,
+                            child: const Icon(Icons.arrow_upward_rounded),
+                          ),
+                        );
+                      }
+                      if ((hasText || hasSendableMedia) && !state.isRecording) {
+                        return ExcludeFocus(
+                          child: M3EButton.filled(
+                            decoration: const M3EButtonDecoration(
+                              fixedSize: Size(48, 48),
+                              borderRadius: 50,
+                              pressedRadius: 10,
+                              hoveredRadius: 20,
+                            ),
+                            onPressed: cubit.send,
+                            child: const Icon(Icons.arrow_upward_rounded),
+                          ),
+                        );
+                      }
+
+                      return RecordMicButton(
+                        locked: state.recordLocked,
+                        onStart: cubit.startRecording,
+                        onStop: cubit.stopRecordingAndSend,
+                        onCancel: cubit.cancelRecording,
+                        onLock: cubit.lockRecording,
+                        buttonBuilder: (context, dragOffset, dragging) {
+                          final scheme = Theme.of(context).colorScheme;
+                          final micButton = ExcludeFocus(
+                            child: M3EButton.filled(
+                              decoration: const M3EButtonDecoration(
+                                fixedSize: Size(48, 48),
+                                borderRadius: 50,
+                                pressedRadius: 10,
+                                hoveredRadius: 20,
+                              ),
+                              onPressed: () {
+                                HapticFeedback.lightImpact();
+                                AdaptiveSnackbar.show(
+                                  context: context,
+                                  message: 'Удерживайте для записи',
+                                  type: .info,
+                                );
+                              },
+                              child: const Icon(Icons.mic_rounded),
+                            ),
+                          );
+
+                          if (state.recordLocked ||
+                              (!state.isRecording && !dragging)) {
+                            return micButton;
+                          }
+                          return Stack(
+                            clipBehavior: .none,
+                            alignment: .bottomCenter,
+                            children: [
+                              Positioned(
+                                bottom: 80,
+                                child: Transform.translate(
+                                  offset: Offset(0, dragOffset.dy),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainer,
+                                      borderRadius: .circular(18),
+                                    ),
+                                    padding: EdgeInsets.all(8),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons
+                                              .keyboard_double_arrow_up_rounded,
+                                        ),
+                                        Icon(Icons.lock_open_rounded, size: 22),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              Positioned(
+                                left: -60,
+                                top: 12,
+                                child: Transform.translate(
+                                  offset: Offset(dragOffset.dx, 0),
+                                  child: Icon(
+                                    Icons.keyboard_double_arrow_left_rounded,
+                                    size: 22,
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              Transform.translate(
+                                offset: dragOffset,
+                                child: micButton,
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

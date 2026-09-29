@@ -1,0 +1,183 @@
+import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/features/encryption/domain/entities/crypto_identity_state.dart';
+import 'package:convetchat/features/encryption/domain/entities/verified_device.dart';
+import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:matrix/encryption.dart';
+import 'package:matrix/matrix.dart';
+import 'package:talker_flutter/talker_flutter.dart';
+
+class EncryptionRepositoryImpl(final Client _client)
+    implements EncryptionRepository {
+  static const _secureStorage = FlutterSecureStorage();
+
+  String get _secureStorageKey => 'ssss_recovery_key_${_client.userID}';
+
+  @override
+  Future<CryptoIdentityState> getIdentityState() async {
+    final state = await _client.getCryptoIdentityState();
+    return CryptoIdentityState(
+      connected: state.connected,
+      crossSigningEnabled: state.crossSigningEnabled,
+      initialized: state.initialized,
+      keyBackupEnabled: state.keyBackupEnabled,
+    );
+  }
+
+  @override
+  Future<void> clearCryptoIdentity() async {
+    await _client.clearCryptoIdentity();
+    getIt<Talker>().warning('Крипто-идентичность очищена');
+  }
+
+  @override
+  Future<String> setupNewIdentity({
+    String? passphrase,
+    required bool reset,
+  }) async {
+    final recoveryKey = await _client.initCryptoIdentity(
+      passphrase: passphrase,
+      wipeCrossSigning: reset,
+      wipeKeyBackup: reset,
+      wipeSecureStorage: reset,
+      setupOnlineKeyBackup: true,
+      setupMasterKey: true,
+      setupSelfSigningKey: true,
+      setupUserSigningKey: true,
+    );
+    return recoveryKey;
+  }
+
+  @override
+  Future<void> restoreIdentity(String keyOrPassphrase) async {
+    try {
+      await _client.restoreCryptoIdentity(keyOrPassphrase, selfSign: false);
+    } catch (e, s) {
+      getIt<Talker>().error('[e2ee:restore] restoreCryptoIdentity упал', e, s);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<VerifiedDevice>> getVerifiedDevices() async {
+    await _client.updateUserDeviceKeys();
+    final userId = _client.userID;
+    if (userId == null) return [];
+    final devices =
+        _client.userDeviceKeys[userId]?.deviceKeys.values
+            .where(
+              (device) =>
+                  device.hasValidSignatureChain(verifiedByTheirMasterKey: true),
+            )
+            .map(
+              (device) => VerifiedDevice(
+                displayName: _deviceName(device.deviceDisplayName),
+                lastActive: device.lastActive,
+              ),
+            )
+            .toList() ??
+        [];
+    return devices;
+  }
+
+  @override
+  Future<Map<String, bool>> getCacheDebugState() async {
+    final encryption = _client.encryption;
+    if (encryption == null) return {'encryption': false};
+    final state = {
+      'encryption': true,
+      'crossSigning.isCached': await encryption.crossSigning.isCached(),
+      'keyManager.isCached': await encryption.keyManager.isCached(),
+      'ssss.self_signing':
+          await encryption.ssss.getCached(EventTypes.CrossSigningSelfSigning) !=
+          null,
+      'ssss.user_signing':
+          await encryption.ssss.getCached(EventTypes.CrossSigningUserSigning) !=
+          null,
+      'ssss.megolm':
+          await encryption.ssss.getCached(EventTypes.MegolmBackup) != null,
+    };
+    return state;
+  }
+
+  @override
+  Future<KeyVerification> startDeviceVerification() async {
+    final userId = _client.userID;
+    final devices = userId == null ? null : _client.userDeviceKeys[userId];
+    if (devices == null) {
+      throw Exception('Список устройств ещё не загружен, попробуйте снова');
+    }
+    final eligible = devices.deviceKeys.values
+        .where((d) => d.hasValidSignatureChain(verifiedByTheirMasterKey: true))
+        .map((d) => d.deviceId)
+        .toList();
+    if (eligible.isEmpty) {
+      getIt<Talker>().warning(
+        '[e2ee:verify] нет устройств с подписью мастер-ключа — '
+        'SAS-запрос не дойдёт ни до кого, нужен ключ/фраза',
+      );
+    }
+    final verification = await devices.startVerification();
+    return verification;
+  }
+
+  @override
+  Future<void> loadBackupKeys() async {
+    final keyManager = _client.encryption?.keyManager;
+    if (keyManager == null) {
+      getIt<Talker>().warning('[e2ee:backup] keyManager недоступен');
+      return;
+    }
+    try {
+      await keyManager.loadAllKeys();
+    } catch (e, s) {
+      getIt<Talker>().error('[e2ee:backup] не удалось загрузить ключи', e, s);
+    }
+  }
+
+  @override
+  Future<void> requestMissingSessions() async {
+    for (final room in _client.rooms) {
+      final lastEvent = room.lastEvent;
+      if (lastEvent == null ||
+          lastEvent.messageType != MessageTypes.BadEncrypted ||
+          lastEvent.content['can_request_session'] != true) {
+        continue;
+      }
+      final sessionId = lastEvent.content.tryGet<String>('session_id');
+      final senderKey = lastEvent.content.tryGet<String>('sender_key');
+      if (sessionId != null && senderKey != null) {
+        _client.encryption?.keyManager.maybeAutoRequest(
+          room.id,
+          sessionId,
+          senderKey,
+          tryOnlineBackup: true,
+          onlineKeyBackupOnly: false,
+        );
+      }
+    }
+  }
+
+  @override
+  Future<String?> readSecureKey() async {
+    try {
+      final key = await _secureStorage.read(key: _secureStorageKey);
+      return key;
+    } catch (e, s) {
+      getIt<Talker>().error('Не удалось прочитать ключ из хранилища', e, s);
+      return null;
+    }
+  }
+
+  @override
+  Future<void> writeSecureKey(String? key) async {
+    if (key == null) {
+      await _secureStorage.delete(key: _secureStorageKey);
+    } else {
+      await _secureStorage.write(key: _secureStorageKey, value: key);
+    }
+  }
+
+  static String _deviceName(String? name) =>
+      (name?.isNotEmpty ?? false) ? name! : 'Неизвестное устройство';
+}
