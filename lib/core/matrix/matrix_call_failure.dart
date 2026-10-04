@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:convetchat/core/utils/safe_text.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 
@@ -102,7 +104,7 @@ class const MatrixCallFailure({
     if (body == null) return null;
     final flat = body.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (flat.isEmpty) return null;
-    return flat.length <= limit ? flat : '${flat.substring(0, limit)}…';
+    return safeTruncate(flat, limit);
   }
 
   @override

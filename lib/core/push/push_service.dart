@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/push/push_config.dart';
 import 'package:convetchat/core/push/push_notification_handler.dart';
+import 'package:convetchat/core/utils/safe_text.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -227,9 +228,9 @@ class PushService(final Client _client, final Talker _talker) {
     }
 
     final deviceId = _client.deviceID ?? 'unknown';
-    var appId = '${PushConfig.appIdPrefix}.$deviceId';
-    if (appId.length > 64) {
-      appId = appId.substring(0, 64);
+    var appId = sanitizeForText('${PushConfig.appIdPrefix}.$deviceId');
+    if (appId.runes.length > 64) {
+      appId = String.fromCharCodes(appId.runes.take(64));
     }
 
     for (var attempt = 1; attempt <= 3; attempt++) {
@@ -395,27 +396,68 @@ class PushService(final Client _client, final Talker _talker) {
     String? eventId,
   ) async {
     try {
-      final room = _client.getRoomById(roomId);
+      final room =
+          _client.getRoomById(roomId) ?? Room(id: roomId, client: _client);
       switch (response.actionId) {
         case replyActionId:
           final input = response.input?.trim();
-          if (input != null && input.isNotEmpty && room != null) {
-            await room.sendTextEvent(input, parseCommands: false);
+          if (input != null && input.isNotEmpty) {
+            await room
+                .sendTextEvent(input, parseCommands: false)
+                .timeout(const Duration(seconds: 15));
+          }
+          if (eventId != null) {
+            await _client
+                .setReadMarker(roomId, mFullyRead: eventId, mReadPrivate: eventId)
+                .timeout(const Duration(seconds: 10));
           }
         case muteActionId:
-          await room?.setPushRuleState(PushRuleState.mentionsOnly);
+          try {
+            await room
+                .setPushRuleState(PushRuleState.dontNotify)
+                .timeout(const Duration(seconds: 10));
+          } catch (_) {
+            await _client
+                .setPushRule(
+                  PushRuleKind.override,
+                  roomId,
+                  [],
+                  conditions: [
+                    PushCondition(
+                      kind: PushRuleConditions.eventMatch.name,
+                      key: 'room_id',
+                      pattern: roomId,
+                    ),
+                  ],
+                )
+                .timeout(const Duration(seconds: 10));
+          }
+          if (eventId != null) {
+            try {
+              await _client
+                  .setReadMarker(
+                    roomId,
+                    mFullyRead: eventId,
+                    mReadPrivate: eventId,
+                  )
+                  .timeout(const Duration(seconds: 10));
+            } catch (_) {}
+          }
         default:
           if (eventId != null) {
-            await _client.setReadMarker(
-              roomId,
-              mFullyRead: eventId,
-              mReadPrivate: eventId,
-            );
+            await _client
+                .setReadMarker(roomId, mFullyRead: eventId, mReadPrivate: eventId)
+                .timeout(const Duration(seconds: 10));
           }
       }
-      await dismissForRoom(roomId);
     } catch (e, st) {
       _talker.error('[push] Ошибка действия из уведомления', e, st);
+    } finally {
+      try {
+        await dismissForRoom(roomId);
+      } catch (e) {
+        _talker.error('[push] Не удалось снять уведомление', e);
+      }
     }
   }
 

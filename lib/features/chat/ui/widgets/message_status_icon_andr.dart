@@ -19,7 +19,7 @@ class const MessageStatusIconAndr({
       ),
 
       .sent => const SizedBox.shrink(),
-      .read => Icon(Icons.done_all, size: _size, color: scheme.onPrimary),
+      .read => const SizedBox.shrink(),
       .failed => Icon(Icons.error_rounded, size: _size, color: scheme.error),
     };
   }

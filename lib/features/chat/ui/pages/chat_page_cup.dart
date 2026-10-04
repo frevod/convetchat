@@ -58,12 +58,6 @@ class const ChatPageCup({super.key}) extends StatelessWidget {
                     onPressed: () => cubitActions.copySelected(),
                     child: const Icon(CupertinoIcons.doc_on_doc),
                   ),
-                  if (selectionCount == 1)
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () => cubitActions.pinSelected(),
-                      child: const Icon(CupertinoIcons.pin_fill),
-                    ),
                   CupertinoButton(
                     padding: EdgeInsets.zero,
                     onPressed: hasOwnSelected

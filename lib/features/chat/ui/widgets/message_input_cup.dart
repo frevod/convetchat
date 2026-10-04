@@ -39,210 +39,213 @@ class const MessageInputCup({super.key}) extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-        child: Column(
-          mainAxisSize: .min,
-          children: [
-            if (replyTo != null)
-              Padding(
-                padding: stripInsets,
-                child: ReplyWidget(
-                  reply: replyTo,
-                  onCancel: cubit.cancelReply,
-                  onTap: () => cubit.jumpToMessage(replyTo.id),
+        child: TextFieldTapRegion(
+          child: Column(
+            mainAxisSize: .min,
+            children: [
+              if (replyTo != null)
+                Padding(
+                  padding: stripInsets,
+                  child: ReplyWidget(
+                    reply: replyTo,
+                    onCancel: cubit.cancelReply,
+                    onTap: () => cubit.jumpToMessage(replyTo.id),
+                  ),
                 ),
-              ),
 
-            if (state.editing case final editing?)
-              Padding(
-                padding: stripInsets,
-                child: EditNotice(
-                  onCancel: cubit.cancelEdit,
-                  onTap: () => cubit.jumpToMessage(editing.id),
+              if (state.editing case final editing?)
+                Padding(
+                  padding: stripInsets,
+                  child: EditNotice(
+                    onCancel: cubit.cancelEdit,
+                    onTap: () => cubit.jumpToMessage(editing.id),
+                  ),
                 ),
-              ),
 
-            if (state.pendingMedia.isNotEmpty)
-              Padding(
-                padding: stripInsets,
-                child: PendingMediaStripCup(
-                  items: state.pendingMedia,
-                  onRemove: cubit.removePending,
+              if (state.pendingMedia.isNotEmpty)
+                Padding(
+                  padding: stripInsets,
+                  child: PendingMediaStripCup(
+                    items: state.pendingMedia,
+                    onRemove: cubit.removePending,
+                  ),
                 ),
-              ),
 
-            Row(
-              crossAxisAlignment: state.recordLocked ? .end : .center,
-              children: [
-                if (!state.isRecording)
-                  CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: () async {
-                      final picked = await MediaAttachSheetCup.show(context);
-                      if (picked != null && picked.isNotEmpty) {
-                        await cubit.attachAssets(picked);
-                      }
-                    },
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: fieldFill,
-                        shape: BoxShape.circle,
+              Row(
+                crossAxisAlignment: state.recordLocked ? .end : .center,
+                children: [
+                  if (!state.isRecording)
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        final picked = await MediaAttachSheetCup.show(context);
+                        if (picked != null && picked.isNotEmpty) {
+                          await cubit.attachAssets(picked);
+                        }
+                      },
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: fieldFill,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(CupertinoIcons.plus),
                       ),
-                      child: const Icon(CupertinoIcons.plus),
+                    ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        IgnorePointer(
+                          ignoring: state.isRecording,
+                          child: Opacity(
+                            opacity: state.isRecording ? 0 : 1,
+                            child: CupertinoTextField(
+                              controller: cubit.inputController,
+                              focusNode: cubit.inputFocus,
+                              placeholder: 'Сообщение',
+                              onTapOutside: (_) => cubit.inputFocus.unfocus(),
+                              maxLines: 5,
+                              minLines: 1,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: .circular(50),
+                                border: BoxBorder.all(),
+                                color: CupertinoColors.systemFill,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (state.isRecording)
+                          Container(
+                            width: double.infinity,
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: fieldFill,
+                              borderRadius: .circular(50),
+                            ),
+                            child: RecordingIndicator(
+                              levels: state.recordLevels,
+                              elapsed: state.recordElapsed,
+                              showCancel: state.recordLocked,
+                              onCancel: cubit.cancelRecording,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Stack(
-                    children: [
-                      IgnorePointer(
-                        ignoring: state.isRecording,
-                        child: Opacity(
-                          opacity: state.isRecording ? 0 : 1,
-                          child: CupertinoTextField(
-                            controller: cubit.inputController,
-                            placeholder: 'Сообщение',
-                            onTapOutside: (_) {},
-                            maxLines: 5,
-                            minLines: 1,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: .circular(50),
-                              border: BoxBorder.all(),
-                              color: CupertinoColors.systemFill,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (state.isRecording)
-                        Container(
-                          width: double.infinity,
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: fieldFill,
-                            borderRadius: .circular(50),
-                          ),
-                          child: RecordingIndicator(
-                            levels: state.recordLevels,
-                            elapsed: state.recordElapsed,
-                            showCancel: state.recordLocked,
-                            onCancel: cubit.cancelRecording,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: cubit.inputController,
-                  builder: (context, value, _) {
-                    final hasText = value.text.trim().isNotEmpty;
-                    final hasSendableMedia = state.pendingMedia.isNotEmpty;
-                    if (state.recordLocked) {
-                      return Column(
-                        mainAxisSize: .min,
-                        children: [
-                          Icon(
-                            CupertinoIcons.lock_fill,
-                            size: 20,
-                            color: CupertinoColors.systemGrey,
-                          ),
-                          const SizedBox(height: 4),
-                          _CircleButton(
-                            onPressed: cubit.stopRecordingAndSend,
-                            background: blue,
-                            icon: const Icon(
-                              CupertinoIcons.arrow_up,
-                              color: white,
-                              size: 20,
-                            ),
-                          ),
-                        ],
-                      );
-                    }
-                    if ((hasText || hasSendableMedia) && !state.isRecording) {
-                      return _CircleButton(
-                        onPressed: cubit.send,
-                        background: blue,
-                        icon: const Icon(
-                          CupertinoIcons.arrow_up,
-                          color: white,
-                          size: 19,
-                        ),
-                      );
-                    }
-                    return RecordMicButton(
-                      locked: state.recordLocked,
-                      onStart: cubit.startRecording,
-                      onStop: cubit.stopRecordingAndSend,
-                      onCancel: cubit.cancelRecording,
-                      onLock: cubit.lockRecording,
-                      buttonBuilder: (context, dragOffset, dragging) {
-                        final micButton = _CircleButton(
-                          onPressed: () {
-                            HapticFeedback.lightImpact();
-                            AdaptiveSnackbar.show(
-                              context: context,
-                              message: 'Удерживайте для записи',
-                              type: .info,
-                            );
-                          },
-                          icon: Icon(
-                            CupertinoIcons.mic_fill,
-                            color: CupertinoColors.label.resolveFrom(context),
-                            size: 20,
-                          ),
-                        );
-                        if (state.recordLocked ||
-                            (!state.isRecording && !dragging)) {
-                          return micButton;
-                        }
-                        return Stack(
-                          clipBehavior: .none,
-                          alignment: .bottomCenter,
+                  const SizedBox(width: 8),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: cubit.inputController,
+                    builder: (context, value, _) {
+                      final hasText = value.text.trim().isNotEmpty;
+                      final hasSendableMedia = state.pendingMedia.isNotEmpty;
+                      if (state.recordLocked) {
+                        return Column(
+                          mainAxisSize: .min,
                           children: [
-                            Positioned(
-                              bottom: 54,
-                              child: Transform.translate(
-                                offset: Offset(0, dragOffset.dy),
-                                child: Icon(
-                                  CupertinoIcons.lock_open_fill,
-                                  size: 22,
-                                  color: grey,
-                                ),
-                              ),
+                            Icon(
+                              CupertinoIcons.lock_fill,
+                              size: 20,
+                              color: CupertinoColors.systemGrey,
                             ),
-                            Positioned(
-                              left: -44,
-                              top: 12,
-                              child: Transform.translate(
-                                offset: Offset(dragOffset.dx, 0),
-                                child: Icon(
-                                  CupertinoIcons.chevron_left_2,
-                                  size: 22,
-                                  color: grey,
-                                ),
+                            const SizedBox(height: 4),
+                            _CircleButton(
+                              onPressed: cubit.stopRecordingAndSend,
+                              background: blue,
+                              icon: const Icon(
+                                CupertinoIcons.arrow_up,
+                                color: white,
+                                size: 20,
                               ),
-                            ),
-                            Transform.translate(
-                              offset: dragOffset,
-                              child: micButton,
                             ),
                           ],
                         );
-                      },
-                    );
-                  },
-                ),
-              ],
-            ),
-          ],
+                      }
+                      if ((hasText || hasSendableMedia) && !state.isRecording) {
+                        return _CircleButton(
+                          onPressed: cubit.send,
+                          background: blue,
+                          icon: const Icon(
+                            CupertinoIcons.arrow_up,
+                            color: white,
+                            size: 19,
+                          ),
+                        );
+                      }
+                      return RecordMicButton(
+                        locked: state.recordLocked,
+                        onStart: cubit.startRecording,
+                        onStop: cubit.stopRecordingAndSend,
+                        onCancel: cubit.cancelRecording,
+                        onLock: cubit.lockRecording,
+                        buttonBuilder: (context, dragOffset, dragging) {
+                          final micButton = _CircleButton(
+                            onPressed: () {
+                              HapticFeedback.lightImpact();
+                              AdaptiveSnackbar.show(
+                                context: context,
+                                message: 'Удерживайте для записи',
+                                type: .info,
+                              );
+                            },
+                            icon: Icon(
+                              CupertinoIcons.mic_fill,
+                              color: CupertinoColors.label.resolveFrom(context),
+                              size: 20,
+                            ),
+                          );
+                          if (state.recordLocked ||
+                              (!state.isRecording && !dragging)) {
+                            return micButton;
+                          }
+                          return Stack(
+                            clipBehavior: .none,
+                            alignment: .bottomCenter,
+                            children: [
+                              Positioned(
+                                bottom: 54,
+                                child: Transform.translate(
+                                  offset: Offset(0, dragOffset.dy),
+                                  child: Icon(
+                                    CupertinoIcons.lock_open_fill,
+                                    size: 22,
+                                    color: grey,
+                                  ),
+                                ),
+                              ),
+                              Positioned(
+                                left: -44,
+                                top: 12,
+                                child: Transform.translate(
+                                  offset: Offset(dragOffset.dx, 0),
+                                  child: Icon(
+                                    CupertinoIcons.chevron_left_2,
+                                    size: 22,
+                                    color: grey,
+                                  ),
+                                ),
+                              ),
+                              Transform.translate(
+                                offset: dragOffset,
+                                child: micButton,
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

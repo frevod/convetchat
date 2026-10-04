@@ -530,22 +530,36 @@ class const _MediaFrame({
                               color: Color(0xFFFFFFFF),
                             ),
                           ),
-                          if (message.status != null) ...[
-                            const SizedBox(width: 3),
-                            if (message.isOwn && message.status == .failed)
-                              GestureDetector(
-                                onTap: interactive
-                                    ? () => context
-                                          .read<ChatCubit>()
-                                          .retrySendMessage(message)
-                                    : null,
-                                child: _OverlayStatusIcon(
-                                  status: message.status!,
-                                ),
-                              )
-                            else
-                              _OverlayStatusIcon(status: message.status!),
-                          ],
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOut,
+                            alignment: .centerLeft,
+                            child: Row(
+                              mainAxisSize: .min,
+                              children: [
+                                if (message.status == .sending ||
+                                    message.status == .failed) ...[
+                                  const SizedBox(width: 3),
+                                  if (message.isOwn &&
+                                      message.status == .failed)
+                                    GestureDetector(
+                                      onTap: interactive
+                                          ? () => context
+                                                .read<ChatCubit>()
+                                                .retrySendMessage(message)
+                                          : null,
+                                      child: _OverlayStatusIcon(
+                                        status: message.status!,
+                                      ),
+                                    )
+                                  else
+                                    _OverlayStatusIcon(
+                                      status: message.status!,
+                                    ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -590,16 +604,8 @@ class const _OverlayStatusIcon({required final MessageStatus status})
         height: 10,
         child: AdaptiveLoadingIndicator(color: Color(0xFFFFFFFF)),
       ),
-      .sent => const Icon(
-        Icons.done_rounded,
-        size: 12,
-        color: Color(0xB3FFFFFF),
-      ),
-      .read => const Icon(
-        Icons.done_all_rounded,
-        size: 12,
-        color: Color(0xFFFFFFFF),
-      ),
+      .sent => const SizedBox.shrink(),
+      .read => const SizedBox.shrink(),
       .failed => const Icon(
         Icons.error_rounded,
         size: 12,

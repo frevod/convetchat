@@ -17,34 +17,12 @@ class const MessageStatusIconCup({
       ),
 
       .sent => const SizedBox.shrink(),
-      .read => _DoubleCheck(color: CupertinoColors.white),
+      .read => const SizedBox.shrink(),
       .failed => Icon(
         CupertinoIcons.exclamationmark,
         size: _size,
         color: CupertinoColors.systemRed.resolveFrom(context),
       ),
     };
-  }
-}
-
-class const _DoubleCheck({required final Color color}) extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 20,
-      height: 14,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            child: Icon(CupertinoIcons.checkmark_alt, size: 10, color: color),
-          ),
-          Positioned(
-            left: 6,
-            child: Icon(CupertinoIcons.checkmark_alt, size: 10, color: color),
-          ),
-        ],
-      ),
-    );
   }
 }

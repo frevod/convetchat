@@ -1,4 +1,5 @@
 import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
+import 'package:convetchat/core/utils/safe_text.dart';
 import 'package:matrix/matrix.dart';
 
 bool isStateEvent(Event event) =>
@@ -33,7 +34,8 @@ String eventLabel(Event event, {bool withSenderNamePrefix = false}) {
         withSenderNamePrefix: withSenderNamePrefix,
       )
       .trim();
-  return text.isEmpty ? 'Сообщение' : text;
+  final clean = sanitizeForText(text);
+  return clean.isEmpty ? 'Сообщение' : clean;
 }
 
 String stripReplyFallback(String body) {
@@ -59,6 +61,7 @@ String eventPreviewLabel(Event event, {required bool showSender}) {
         withSenderNamePrefix: false,
       )
       .trim();
+  label = sanitizeForText(label);
   if (label.isEmpty) return 'Сообщение';
 
   if (event.redacted || event.redactedBecause != null) return label;
@@ -67,8 +70,10 @@ String eventPreviewLabel(Event event, {required bool showSender}) {
   if (!isStateEvent(event) && (showSender || own)) {
     final name = own
         ? ruMatrixLocalizations.you
-        : event.senderFromMemoryOrFallback.calcDisplayname(
-            i18n: ruMatrixLocalizations,
+        : sanitizeForText(
+            event.senderFromMemoryOrFallback.calcDisplayname(
+              i18n: ruMatrixLocalizations,
+            ),
           );
     label = '$name: $label';
   }
