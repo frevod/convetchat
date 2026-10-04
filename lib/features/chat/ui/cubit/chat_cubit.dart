@@ -21,6 +21,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
+import 'package:matrix/matrix.dart' as matrix;
 import 'package:path/path.dart' as path_lib;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -31,7 +32,7 @@ import 'package:talker_flutter/talker_flutter.dart';
 class ChatCubit(
   final ChatRepository _repository, {
   required final String _roomId,
-}) extends Cubit<ChatState> {
+}) extends Cubit<ChatState> with WidgetsBindingObserver {
   this
     : super(
         ChatState(
@@ -72,6 +73,31 @@ class ChatCubit(
       emit(state.copyWith(pinnedEventIds: () => ids));
     });
     inputController.addListener(_onInputChanged);
+    _wasKeyboardVisible = _keyboardVisibleNow;
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  bool _wasKeyboardVisible = false;
+
+  bool get _keyboardVisibleNow {
+    try {
+      return WidgetsBinding.instance.platformDispatcher.views.any(
+        (v) => v.viewInsets.bottom > 0,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  void didChangeMetrics() {
+    final nowVisible = _keyboardVisibleNow;
+    if (_wasKeyboardVisible && !nowVisible) {
+      try {
+        if (inputFocus.hasFocus) inputFocus.unfocus();
+      } catch (_) {}
+    }
+    _wasKeyboardVisible = nowVisible;
   }
 
   late final StreamSubscription<List<ChatMessage>> _subscription;
@@ -137,6 +163,7 @@ class ChatCubit(
 
   @override
   Future<void> close() async {
+    WidgetsBinding.instance.removeObserver(this);
     _recordGeneration++;
     _subscription.cancel();
     _typingSubscription.cancel();
@@ -259,35 +286,56 @@ class ChatCubit(
     }
     var failed = 0;
     MatrixCallFailure? reason;
-    for (var i = 0; i < pending.length; i++) {
-      if (isClosed) return;
-      final item = pending[i];
-      try {
-        await _repository.sendMedia(
-          roomId: _roomId,
-          filePath: item.filePath,
-          fileName: item.fileName,
-          isVideo: item.isVideo,
-          width: item.width,
-          height: item.height,
-          durationMs: item.durationMs,
-          thumbBytes: item.thumbBytes.isEmpty ? null : item.thumbBytes,
-          thumbWidth: item.thumbWidth,
-          thumbHeight: item.thumbHeight,
-          caption: i == 0 && text.isNotEmpty ? text : null,
-          inReplyToEventId: replyToEventId,
-        );
-      } catch (e, s) {
-        if (isClosed) return;
-        failed++;
-        if (e is MatrixCallFailure) reason ??= e;
-        getIt<Talker>().error(
-          'Не удалось отправить медиа${e is MatrixCallFailure ? ': $e' : ''}',
-          e,
-          s,
-        );
+    Future<void> sendOne(int index, PendingMedia item) async {
+      var attempt = 0;
+      while (true) {
+        try {
+          await _repository.sendMedia(
+            roomId: _roomId,
+            filePath: item.filePath,
+            fileName: item.fileName,
+            isVideo: item.isVideo,
+            width: item.width,
+            height: item.height,
+            durationMs: item.durationMs,
+            thumbBytes: item.thumbBytes.isEmpty ? null : item.thumbBytes,
+            thumbWidth: item.thumbWidth,
+            thumbHeight: item.thumbHeight,
+            caption: index == 0 && text.isNotEmpty ? text : null,
+            inReplyToEventId: replyToEventId,
+          );
+          return;
+        } on matrix.MatrixException catch (e) {
+          final waitMs = e.retryAfterMs;
+          if (e.error != matrix.MatrixError.M_LIMIT_EXCEEDED ||
+              waitMs == null ||
+              attempt >= 2 ||
+              isClosed) {
+            rethrow;
+          }
+          attempt++;
+          await Future.delayed(Duration(milliseconds: waitMs + 500 * attempt));
+        }
       }
     }
+
+    await Future.wait(
+      pending.asMap().entries.map((entry) async {
+        if (isClosed) return;
+        try {
+          await sendOne(entry.key, entry.value);
+        } catch (e, s) {
+          if (isClosed) return;
+          failed++;
+          if (e is MatrixCallFailure) reason ??= e;
+          getIt<Talker>().error(
+            'Не удалось отправить медиа${e is MatrixCallFailure ? ': $e' : ''}',
+            e,
+            s,
+          );
+        }
+      }),
+    );
     if (failed > 0 && !isClosed) {
       emit(
         state.copyWith(
@@ -355,7 +403,8 @@ class ChatCubit(
   }
 
   Future<void> cancelSendMessage(ChatMessage message) async {
-    if (!message.isOwn || message.status != .failed) return;
+    if (!message.isOwn) return;
+    if (message.status != .failed && message.status != .sending) return;
     try {
       await _repository.cancelSend(roomId: _roomId, eventId: message.id);
     } catch (e, s) {
@@ -643,6 +692,25 @@ class ChatCubit(
     inputController.clear();
     emit(state.copyWith(editing: () => null));
   }
+
+  Future<void> toggleReaction(ChatMessage message, String emoji) async {
+    if (!message.canReact || isClosed) return;
+    if (emoji.isEmpty) return;
+    try {
+      await _repository.toggleReaction(
+        roomId: _roomId,
+        eventId: message.id,
+        emoji: emoji,
+      );
+    } catch (e, s) {
+      if (isClosed) return;
+      getIt<Talker>().error('[chat] Не удалось поставить реакцию', e, s);
+      emit(state.copyWith(errorMessage: () => 'Не удалось поставить реакцию'));
+    }
+  }
+
+  Future<void> toggleHeart(ChatMessage message) =>
+      toggleReaction(message, '❤️');
 
   Future<void> deleteMessage(ChatMessage message) async {
     if (message.isState) return;

@@ -1,6 +1,7 @@
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_state.dart';
+import 'package:convetchat/features/chat/ui/widgets/bubble_appear.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_bubble.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_grouping.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -175,11 +176,15 @@ class const _MessageListBody({
     }
 
     final indexById = <String, int>{};
+    final knownIds = <String>{};
     for (var i = 0; i < messages.length; i++) {
-      indexById[messages[i].id] = i;
+      indexById[messages[i].txId ?? messages[i].id] = i;
+      knownIds.add(messages[i].id);
+      final txId = messages[i].txId;
+      if (txId != null) knownIds.add(txId);
     }
 
-    anchors.removeWhere((id, _) => !indexById.containsKey(id));
+    anchors.removeWhere((id, _) => !knownIds.contains(id));
     GlobalKey anchorFor(String id) =>
         anchors.putIfAbsent(id, () => GlobalKey());
 
@@ -219,11 +224,16 @@ class const _MessageListBody({
                     msgIndex + 1 < messages.length &&
                     messages[msgIndex + 1].isState;
                 final expanded = expandedIds.contains(message.id);
-                return MessageBubble(
-                  key: ValueKey(message.id),
-                  message: message,
-                  highlighted: message.id == highlightEventId,
-                  anchorKey: anchorFor(message.id),
+                return BubbleAppear(
+                  key: ValueKey(message.txId ?? message.id),
+                  isOwn: message.isOwn,
+                  fresh:
+                      DateTime.now().difference(message.time) <
+                      const Duration(seconds: 20),
+                  child: MessageBubble(
+                    message: message,
+                    highlighted: message.id == highlightEventId,
+                    anchorKey: anchorFor(message.id),
                   isCollapsed: isState && prevState && !expanded,
                   expanded: expanded,
                   onExpand: isState && nextState && !prevState
@@ -233,6 +243,7 @@ class const _MessageListBody({
                       above != null && areSameGroup(message, above),
                   belowSameSender:
                       below != null && areSameGroup(message, below),
+                  ),
                 );
               },
               childCount: messages.length + (isLoadingMore ? 1 : 0),

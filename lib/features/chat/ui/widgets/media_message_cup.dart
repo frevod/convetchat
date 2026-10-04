@@ -262,18 +262,31 @@ class const _MediaFrame({
                               color: Color(0xFFFFFFFF),
                             ),
                           ),
-                          if (msg.status != null) ...[
-                            const SizedBox(width: 3),
-                            if (msg.isOwn && msg.status == .failed)
-                              GestureDetector(
-                                onTap: () => context
-                                    .read<ChatCubit>()
-                                    .retrySendMessage(msg),
-                                child: _OverlayStatusIcon(status: msg.status!),
-                              )
-                            else
-                              _OverlayStatusIcon(status: msg.status!),
-                          ],
+                          AnimatedSize(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOut,
+                            alignment: .centerLeft,
+                            child: Row(
+                              mainAxisSize: .min,
+                              children: [
+                                if (msg.status == .sending ||
+                                    msg.status == .failed) ...[
+                                  const SizedBox(width: 3),
+                                  if (msg.isOwn && msg.status == .failed)
+                                    GestureDetector(
+                                      onTap: () => context
+                                          .read<ChatCubit>()
+                                          .retrySendMessage(msg),
+                                      child: _OverlayStatusIcon(
+                                        status: msg.status!,
+                                      ),
+                                    )
+                                  else
+                                    _OverlayStatusIcon(status: msg.status!),
+                                ],
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -318,16 +331,8 @@ class const _OverlayStatusIcon({required final MessageStatus status})
         height: 10,
         child: AdaptiveLoadingIndicator(color: Color(0xFFFFFFFF)),
       ),
-      .sent => const Icon(
-        CupertinoIcons.checkmark_alt,
-        size: 12,
-        color: Color(0xB3FFFFFF),
-      ),
-      .read => const Icon(
-        CupertinoIcons.checkmark_alt_circle,
-        size: 12,
-        color: Color(0xFFFFFFFF),
-      ),
+      .sent => const SizedBox.shrink(),
+      .read => const SizedBox.shrink(),
       .failed => const Icon(
         CupertinoIcons.exclamationmark_circle,
         size: 12,

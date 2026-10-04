@@ -1,3 +1,4 @@
+import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_ui/material_ui.dart';
@@ -57,7 +58,7 @@ class const _ForwardTargetSheet() extends StatelessWidget {
                     final target = targets[index];
                     return ListTile(
                       leading: CircleAvatar(
-                        child: Text(target.name.isEmpty ? '?' : target.name[0]),
+                        child: Text(avatarInitial(target.name)),
                       ),
                       title: Text(
                         target.name,
@@ -124,7 +125,6 @@ class const MessageSelectionActions({super.key}) extends StatelessWidget {
   Widget build(BuildContext context) {
     final cubit = context.read<ChatCubit>();
     final hasOwn = selectedHasOwnMessages(cubit);
-    final singleSelected = cubit.state.selectedEventIds.length == 1;
 
     return Row(
       mainAxisSize: .min,
@@ -134,12 +134,6 @@ class const MessageSelectionActions({super.key}) extends StatelessWidget {
           tooltip: 'Копировать',
           onPressed: () => cubit.copySelected(),
         ),
-        if (singleSelected)
-          MessageSelectionAction(
-            icon: Icons.push_pin_rounded,
-            tooltip: 'Закрепить',
-            onPressed: () => cubit.pinSelected(),
-          ),
         MessageSelectionAction(
           icon: Icons.delete_outline_rounded,
           tooltip: 'Удалить',

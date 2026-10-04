@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/event_label.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
+import 'package:convetchat/core/utils/safe_text.dart';
 import 'package:convetchat/features/chats/domain/entities/chat_room.dart';
 import 'package:convetchat/features/chats/domain/entities/connection_status.dart';
 import 'package:convetchat/features/chats/domain/entities/public_room.dart';
@@ -223,9 +224,10 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
     final name = room
         .unsafeGetUserFromMemoryOrFallback(senderId)
         .calcDisplayname();
-    if (name.isNotEmpty) return name;
+    if (name.isNotEmpty) return sanitizeForText(name);
     final local = senderId.split(':').first;
-    return local.startsWith('@') ? local.substring(1) : senderId;
+    final fallback = local.startsWith('@') ? local.substring(1) : senderId;
+    return sanitizeForText(fallback);
   }
 
   @override

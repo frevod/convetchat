@@ -100,4 +100,10 @@ abstract class ChatRepository() {
     required String targetRoomId,
     required String eventId,
   });
+
+  Future<void> toggleReaction({
+    required String roomId,
+    required String eventId,
+    required String emoji,
+  });
 }

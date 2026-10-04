@@ -34,7 +34,7 @@ class const SettingsPageAndr({super.key}) extends StatelessWidget {
         onTap: openAccountManagement,
       ),
       M3EListItem(
-        headline: 'Безопасность',
+        headline: 'Безопасность и конфиденциальность',
         leading: const Icon(Icons.shield_rounded),
         onTap: () => context.push('/settings/security'),
       ),

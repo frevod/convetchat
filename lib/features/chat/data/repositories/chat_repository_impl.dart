@@ -6,6 +6,7 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/event_label.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
 import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
+import 'package:convetchat/core/utils/safe_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_send_restriction.dart';
 import 'package:convetchat/features/chat/domain/entities/media_attachment.dart';
@@ -217,6 +218,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       return;
     }
     final updates = StreamController<void>.broadcast();
+    StreamSubscription? syncSub;
     try {
       final timeline = await room.getTimeline(
         onUpdate: () {
@@ -224,6 +226,18 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
         },
       );
       _timelines[roomId] = timeline;
+
+      syncSub = _client.onSync.stream
+          .where(
+            (syncUpdate) =>
+                syncUpdate.rooms?.join?[roomId]?.ephemeral?.any(
+                  (ephemeral) => ephemeral.type == 'm.receipt',
+                ) ??
+                false,
+          )
+          .listen((_) {
+            if (!updates.isClosed) updates.add(null);
+          });
 
       unawaited(_prefetchHistory(timeline));
 
@@ -236,6 +250,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
         yield _snapshot(room, timeline);
       }
     } finally {
+      await syncSub?.cancel();
       await updates.close();
     }
   }
@@ -413,8 +428,8 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   }) async {
     final event = await _timelineEvent(roomId, eventId);
     if (event == null) throw Exception('Сообщение не найдено в timeline');
-    if (!event.status.isError) {
-      throw Exception('Убрать можно только не ушедшее сообщение с ошибкой');
+    if (event.status.isSent) {
+      throw Exception('Убрать можно только ещё не отправленное сообщение');
     }
     await event.cancelSend();
   }
@@ -516,6 +531,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final display = event.getDisplayEvent(timeline);
       return ChatMessage(
         id: event.eventId,
+        txId: event.transactionId,
         senderId: event.senderId,
         senderName: _senderName(room, event.senderId),
         senderAvatarMxc: room
@@ -542,8 +558,38 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
             !event.redacted &&
             event.type == EventTypes.Encrypted &&
             event.messageType == MessageTypes.BadEncrypted,
+        reactions: state ? const [] : _reactions(event, timeline),
+        seenBy: state ? const [] : _seenBy(room, event, ownId: ownId),
       );
     }).toList();
+  }
+
+  static List<SeenByUser> _seenBy(
+    Room room,
+    Event event, {
+    required String? ownId,
+  }) {
+    try {
+      final receipts = event.receipts;
+      if (receipts.isEmpty) return const [];
+      final result = <SeenByUser>[];
+      for (final receipt in receipts) {
+        final userId = receipt.user.id;
+        if (userId == ownId) continue;
+        if (userId == event.senderId) continue;
+        if (result.any((u) => u.id == userId)) continue;
+        result.add(
+          SeenByUser(
+            id: userId,
+            displayName: receipt.user.calcDisplayname(),
+            avatarMxc: receipt.user.avatarUrl?.toString(),
+          ),
+        );
+      }
+      return result;
+    } catch (_) {
+      return const [];
+    }
   }
 
   static String _body(Room room, Event event, Event display) {
@@ -670,6 +716,79 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     }
   }
 
+  static List<MessageReaction> _reactions(Event event, Timeline timeline) {
+    final ownId = event.room.client.userID;
+    final counts = <String, int>{};
+    final reacted = <String>{};
+    for (final e in event.aggregatedEvents(
+      timeline,
+      RelationshipTypes.reaction,
+    )) {
+      final key = e.content
+          .tryGetMap<String, Object?>('m.relates_to')
+          ?.tryGet<String>('key');
+      if (key == null || key.isEmpty) continue;
+      if (e.redacted) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+      if (e.senderId == ownId) reacted.add(key);
+    }
+    if (counts.isEmpty) return const [];
+    final entries = counts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return [
+      for (final e in entries)
+        MessageReaction(
+          key: e.key,
+          count: e.value,
+          reacted: reacted.contains(e.key),
+        ),
+    ];
+  }
+
+  @override
+  Future<void> toggleReaction({
+    required String roomId,
+    required String eventId,
+    required String emoji,
+  }) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    final timeline = _timelines[roomId];
+    final ownId = _client.userID;
+    Event? target;
+    if (timeline != null) {
+      for (final event in timeline.events) {
+        if (event.eventId == eventId) {
+          target = event;
+          break;
+        }
+      }
+    }
+    target ??= await _findEvent(roomId, eventId);
+    if (target != null && timeline != null) {
+      Event? existing;
+      for (final e in target.aggregatedEvents(
+        timeline,
+        RelationshipTypes.reaction,
+      )) {
+        if (e.redacted) continue;
+        if (e.senderId != ownId) continue;
+        final key = e.content
+            .tryGetMap<String, Object?>('m.relates_to')
+            ?.tryGet<String>('key');
+        if (key == emoji) {
+          existing = e;
+          break;
+        }
+      }
+      if (existing != null) {
+        await existing.redactEvent();
+        return;
+      }
+    }
+    await room.sendReaction(eventId, emoji);
+  }
+
   static MessageStatus? _status(Event event, Room room, {required bool isOwn}) {
     if (!isOwn) return null;
     if (event.status == .error) return .failed;
@@ -706,9 +825,10 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     final name = room
         .unsafeGetUserFromMemoryOrFallback(senderId)
         .calcDisplayname();
-    if (name.isNotEmpty) return name;
+    if (name.isNotEmpty) return sanitizeForText(name);
     final local = senderId.split(':').first;
-    return local.startsWith('@') ? local.substring(1) : senderId;
+    final fallback = local.startsWith('@') ? local.substring(1) : senderId;
+    return sanitizeForText(fallback);
   }
 
   @override

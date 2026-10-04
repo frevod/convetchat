@@ -16,12 +16,13 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-class FakeChatsRepository implements ChatsRepository {
-  FakeChatsRepository(List<ChatRoom> rooms)
+class FakeChatsRepository(List<ChatRoom> rooms) implements ChatsRepository {
+  this
     : _rooms = rooms,
-      _controller = StreamController<
-        ({List<ChatRoom> rooms, List<ChatRoom> invites})
-      >.broadcast();
+      _controller =
+          StreamController<
+            ({List<ChatRoom> rooms, List<ChatRoom> invites})
+          >.broadcast();
 
   List<ChatRoom> _rooms;
   final StreamController<({List<ChatRoom> rooms, List<ChatRoom> invites})>
@@ -145,14 +146,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    // Короткий свайп вправо по первой строке.
     final first = find.text('Alpha');
     expect(first, findsOneWidget);
     await tester.drag(first, const Offset(120, 0));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    // Кнопка закрепа должна быть видна и тапабельна.
     final pinBtn = find.byIcon(Icons.push_pin_rounded);
     expect(pinBtn, findsWidgets);
     await tester.tap(pinBtn.first);
@@ -178,8 +177,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    // Оптимистичное удаление как при leave, затем возврат снепшота с комнатой
-    // (синк ещё не догнал) — ключи не должны задвоиться.
     repo.emitRooms([room('!b:s', 'Beta')]);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
@@ -205,7 +202,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
 
-    // Свайп влево по первой строке открывает кнопку выхода.
     await tester.drag(find.text('Alpha'), const Offset(-160, 0));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -213,11 +209,9 @@ void main() {
     await tester.tap(find.byIcon(Icons.logout_rounded).first);
     await tester.pumpAndSettle();
 
-    // Диалог подтверждения — строка всё ещё в списке.
     expect(find.text('Покинуть комнату?'), findsOneWidget);
     expect(find.text('Alpha'), findsOneWidget);
 
-    // Подтверждаем — уходит именно Alpha, Beta остаётся.
     await tester.tap(find.text('Покинуть'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -243,15 +237,12 @@ void main() {
     await tester.tap(find.byIcon(Icons.logout_rounded).first);
     await tester.pumpAndSettle();
 
-    // Отмена — ничего не убирается.
     await tester.tap(find.text('Отмена'));
     await tester.pumpAndSettle();
     expect(find.text('Alpha'), findsOneWidget);
     expect(find.text('Beta'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    // Подтверждённый выход + отставший снепшот с комнатой:
-    // строка не появляется заново.
     await tester.drag(find.text('Alpha'), const Offset(-160, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.logout_rounded).first);

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
 import 'package:convetchat/features/encryption/ui/cubit/encryption_state.dart';
@@ -268,7 +270,7 @@ class EncryptionCubit(
     if (file == null || isClosed) return;
     try {
       final bytes = await file.readAsBytes();
-      keyController.text = String.fromCharCodes(bytes).trim();
+      keyController.text = utf8.decode(bytes, allowMalformed: true).trim();
     } catch (e, s) {
       if (isClosed) return;
       getIt<Talker>().error('Не удалось прочитать файл ключа', e, s);

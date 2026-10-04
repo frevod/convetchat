@@ -159,7 +159,9 @@ Future<PushHandleResult> _enrich({
   } finally {
     if (client != null) {
       try {
-        await client.dispose(closeDatabase: false);
+        await client.dispose(closeDatabase: false).timeout(
+          const Duration(seconds: 3),
+        );
       } catch (e, s) {
         talker.warning('[push:bg] Не удалось отпустить клиент', e, s);
       }
@@ -295,54 +297,53 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
   if (roomId == null || eventId == null) return;
 
   final talker = createTalker();
+  final localNotifications = FlutterLocalNotificationsPlugin();
+  await _init(localNotifications, talker);
 
   Client? client;
   try {
     client = await ClientFactory.createClient().timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 20),
     );
-    if (client.isLogged()) {
-      final room = client.getRoomById(roomId);
-      switch (actionId) {
-        case replyActionId:
-          final input = response.input?.trim();
-          if (input != null && input.isNotEmpty && room != null) {
-            await room
-                .sendTextEvent(input, parseCommands: false)
-                .timeout(const Duration(seconds: 5));
-          } else {
-            await client
-                .setReadMarker(
-                  roomId,
-                  mFullyRead: eventId,
-                  mReadPrivate: eventId,
-                )
-                .timeout(const Duration(seconds: 3));
-          }
-        case muteActionId:
+    if (!client.isLogged()) {
+      talker.warning('[push:tap] Клиент не залогинен, действие $actionId');
+      return;
+    }
+    final room = await _resolveRoom(client, roomId, talker);
+    switch (actionId) {
+      case replyActionId:
+        final input = response.input?.trim();
+        if (input != null && input.isNotEmpty) {
           if (room != null) {
             await room
-                .setPushRuleState(PushRuleState.mentionsOnly)
-                .timeout(const Duration(seconds: 3));
+                .sendTextEvent(input, parseCommands: false)
+                .timeout(const Duration(seconds: 15));
+          } else {
+            talker.warning('[push:tap] Нет комнаты $roomId, ответ не отправлен');
           }
-        default:
-          await client
-              .setReadMarker(roomId, mFullyRead: eventId, mReadPrivate: eventId)
-              .timeout(const Duration(seconds: 3));
-      }
+        }
+        await _markRead(client, roomId, eventId, talker);
+      case muteActionId:
+        await _muteRoom(client, room, roomId, talker);
+        await _markRead(client, roomId, eventId, talker);
+      default:
+        await _markRead(client, roomId, eventId, talker);
     }
+  } on TimeoutException catch (e, s) {
+    talker.error('[push:tap] Таймаут действия $actionId', e, s);
   } catch (e, s) {
     talker.error('[push:tap] Не удалось обработать действие $actionId', e, s);
   } finally {
     if (client != null) {
       try {
-        await client.dispose(closeDatabase: false);
+        await client.dispose(closeDatabase: false).timeout(
+          const Duration(seconds: 3),
+        );
       } catch (_) {}
     }
   }
 
   try {
-    final localNotifications = FlutterLocalNotificationsPlugin();
     await _cancelRoom(roomId, localNotifications, talker);
     await _updateSummary(
       localNotifications: localNotifications,
@@ -350,6 +351,73 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
     );
   } catch (e, s) {
     talker.warning('[push:tap] Не удалось снять уведомление', e, s);
+  }
+}
+
+Future<Room?> _resolveRoom(Client client, String roomId, Talker talker) async {
+  try {
+    final cached = client.getRoomById(roomId);
+    if (cached != null) return cached;
+    try {
+      final fromDb = await client.database
+          .getSingleRoom(client, roomId)
+          .timeout(const Duration(seconds: 5));
+      if (fromDb != null) return fromDb;
+    } catch (e, s) {
+      talker.warning('[push:tap] Не удалось загрузить комнату из базы', e, s);
+    }
+    return Room(id: roomId, client: client);
+  } catch (e, s) {
+    talker.warning('[push:tap] Не удалось резолвнуть комнату', e, s);
+    return null;
+  }
+}
+
+Future<void> _muteRoom(
+  Client client,
+  Room? room,
+  String roomId,
+  Talker talker,
+) async {
+  try {
+    if (room != null) {
+      await room
+          .setPushRuleState(PushRuleState.dontNotify)
+          .timeout(const Duration(seconds: 10));
+      return;
+    }
+  } catch (e, s) {
+    talker.warning('[push:tap] Мьют через Room не удался, пробую напрямую', e, s);
+  }
+  await client
+      .setPushRule(
+        PushRuleKind.override,
+        roomId,
+        [],
+        conditions: [
+          PushCondition(
+            kind: PushRuleConditions.eventMatch.name,
+            key: 'room_id',
+            pattern: roomId,
+          ),
+        ],
+      )
+      .timeout(const Duration(seconds: 10));
+}
+
+Future<void> _markRead(
+  Client client,
+  String roomId,
+  String eventId,
+  Talker talker,
+) async {
+  try {
+    await client
+        .setReadMarker(roomId, mFullyRead: eventId, mReadPrivate: eventId)
+        .timeout(const Duration(seconds: 10));
+  } catch (e, s) {
+    talker.warning('[push:tap] Не удалось отметить прочитанным', e, s);
+    rethrow;
   }
 }
 

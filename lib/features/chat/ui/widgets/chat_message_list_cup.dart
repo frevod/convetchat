@@ -1,6 +1,7 @@
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_state.dart';
+import 'package:convetchat/features/chat/ui/widgets/bubble_appear.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_bubble.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_grouping.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
@@ -129,10 +130,14 @@ class _ChatMessageListCupState() extends State<ChatMessageListCup> {
     }
 
     final indexById = <String, int>{};
+    final knownIds = <String>{};
     for (var i = 0; i < visible.length; i++) {
-      indexById[visible[i].id] = i;
+      indexById[visible[i].txId ?? visible[i].id] = i;
+      knownIds.add(visible[i].id);
+      final txId = visible[i].txId;
+      if (txId != null) knownIds.add(txId);
     }
-    _anchors.removeWhere((id, _) => !indexById.containsKey(id));
+    _anchors.removeWhere((id, _) => !knownIds.contains(id));
 
     return BlocListener<ChatCubit, ChatState>(
       listenWhen: (previous, current) =>
@@ -172,7 +177,7 @@ class _ChatMessageListCupState() extends State<ChatMessageListCup> {
 
             final indexById = <String, int>{};
             for (var i = 0; i < visible.length; i++) {
-              indexById[visible[i].id] = i;
+              indexById[visible[i].txId ?? visible[i].id] = i;
             }
             _anchors.removeWhere((id, _) => !indexById.containsKey(id));
 
@@ -211,20 +216,26 @@ class _ChatMessageListCupState() extends State<ChatMessageListCup> {
                       final expanded = state.expandedEventIds.contains(
                         message.id,
                       );
-                      return MessageBubble(
-                        key: ValueKey(message.id),
-                        message: message,
-                        highlighted: message.id == state.highlightEventId,
-                        anchorKey: _anchorFor(message.id),
-                        isCollapsed: isState && prevState && !expanded,
-                        expanded: expanded,
-                        onExpand: isState && nextState && !prevState
-                            ? () => cubit.toggleExpandedEvents(message.id)
-                            : null,
-                        aboveSameSender:
-                            above != null && areSameGroup(message, above),
-                        belowSameSender:
-                            below != null && areSameGroup(message, below),
+                      return BubbleAppear(
+                        key: ValueKey(message.txId ?? message.id),
+                        isOwn: message.isOwn,
+                        fresh:
+                            DateTime.now().difference(message.time) <
+                            const Duration(seconds: 20),
+                        child: MessageBubble(
+                          message: message,
+                          highlighted: message.id == state.highlightEventId,
+                          anchorKey: _anchorFor(message.id),
+                          isCollapsed: isState && prevState && !expanded,
+                          expanded: expanded,
+                          onExpand: isState && nextState && !prevState
+                              ? () => cubit.toggleExpandedEvents(message.id)
+                              : null,
+                          aboveSameSender:
+                              above != null && areSameGroup(message, above),
+                          belowSameSender:
+                              below != null && areSameGroup(message, below),
+                        ),
                       );
                     },
                     childCount: visible.length + (state.isLoadingMore ? 1 : 0),

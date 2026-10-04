@@ -9,8 +9,27 @@ enum MessageStatus() {
   failed,
 }
 
+class const MessageReaction({
+  required final String key,
+  required final int count,
+  required final bool reacted,
+}) extends Equatable {
+  @override
+  List<Object?> get props => [key, count, reacted];
+}
+
+class const SeenByUser({
+  required final String id,
+  required final String displayName,
+  required final String? avatarMxc,
+}) extends Equatable {
+  @override
+  List<Object?> get props => [id, displayName, avatarMxc];
+}
+
 class const ChatMessage({
   required final String id,
+  required final String? txId,
   required final String senderId,
   required final String senderName,
   required final String? senderAvatarMxc,
@@ -31,13 +50,21 @@ class const ChatMessage({
 
   final bool isUndecryptable = false,
   final bool isEdited = false,
+  final List<MessageReaction> reactions = const [],
+  final List<SeenByUser> seenBy = const [],
 }) extends Equatable {
   bool get isBody =>
       !isDeleted && !isUndecryptable && media == null && voice == null;
 
+  bool get hasReactions => reactions.isNotEmpty;
+
+  bool get canReact =>
+      !isState && !isDeleted && !isUndecryptable && status != .sending;
+
   @override
   List<Object?> get props => [
     id,
+    txId,
     senderId,
     senderName,
     senderAvatarMxc,
@@ -55,5 +82,7 @@ class const ChatMessage({
     isDeleted,
     isUndecryptable,
     isEdited,
+    reactions,
+    seenBy,
   ];
 }

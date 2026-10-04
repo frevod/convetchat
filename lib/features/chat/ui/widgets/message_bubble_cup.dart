@@ -4,8 +4,10 @@ import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/media_message.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_deleted_label.dart';
+import 'package:convetchat/features/chat/ui/widgets/message_reactions.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_reply_quote.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_status_icon.dart';
+import 'package:convetchat/features/chat/ui/widgets/seen_by_avatars.dart';
 import 'package:convetchat/features/chat/ui/widgets/swipe_to_reply.dart';
 import 'package:convetchat/features/chat/ui/widgets/voice_player.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
@@ -158,31 +160,43 @@ class const MessageBubbleCup({
                           : timeColor,
                     ),
                   ),
-                  if (message.status != null) ...[
-                    const SizedBox(width: 4),
-                    if (isOwn && message.status == .failed)
-                      GestureDetector(
-                        onTap: () =>
-                            context.read<ChatCubit>().retrySendMessage(message),
-                        child: MessageStatusIcon(status: message.status),
-                      )
-                    else
-                      MessageStatusIcon(status: message.status),
-                    if (isOwn && message.status == .failed)
-                      GestureDetector(
-                        onTap: () => context
-                            .read<ChatCubit>()
-                            .cancelSendMessage(message),
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 4),
-                          child: Icon(
-                            CupertinoIcons.xmark,
-                            size: 13,
-                            color: timeColor,
-                          ),
-                        ),
-                      ),
-                  ],
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeOut,
+                    alignment: .centerLeft,
+                    child: Row(
+                      mainAxisSize: .min,
+                      children: [
+                        if (message.status == .sending ||
+                            message.status == .failed) ...[
+                          const SizedBox(width: 4),
+                          if (isOwn && message.status == .failed)
+                            GestureDetector(
+                              onTap: () => context
+                                  .read<ChatCubit>()
+                                  .retrySendMessage(message),
+                              child: MessageStatusIcon(status: message.status),
+                            )
+                          else
+                            MessageStatusIcon(status: message.status),
+                          if (isOwn && message.status == .failed)
+                            GestureDetector(
+                              onTap: () => context
+                                  .read<ChatCubit>()
+                                  .cancelSendMessage(message),
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 4),
+                                child: Icon(
+                                  CupertinoIcons.xmark,
+                                  size: 13,
+                                  color: timeColor,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -198,31 +212,68 @@ class const MessageBubbleCup({
         child: bubble,
       );
       if (!isOwn && message.showSender) {
-        return _swipeable(
+        return _withReactions(
           context,
-          Padding(padding: const EdgeInsets.only(left: 40), child: aligned),
+          showSender: false,
+          child: _swipeable(
+            context,
+            Padding(padding: const EdgeInsets.only(left: 40), child: aligned),
+          ),
         );
       }
-      return _swipeable(context, aligned);
+      return _withReactions(
+        context,
+        showSender: false,
+        child: _swipeable(context, aligned),
+      );
     }
-    return _swipeable(
+    return _withReactions(
       context,
-      Row(
-        key: anchorKey,
-        crossAxisAlignment: .start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8, top: 10),
-            child: MxcAvatar(
-              mxc: message.senderAvatarMxc,
-              fallback: avatarInitial(message.senderName),
-              size: 32,
-              context: context,
+      showSender: true,
+      child: _swipeable(
+        context,
+        Row(
+          key: anchorKey,
+          crossAxisAlignment: .start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 8, top: 10),
+              child: MxcAvatar(
+                mxc: message.senderAvatarMxc,
+                fallback: avatarInitial(message.senderName),
+                size: 32,
+                context: context,
+              ),
             ),
-          ),
-          Flexible(child: bubble),
-        ],
+            Flexible(child: bubble),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _withReactions(
+    BuildContext context, {
+    required bool showSender,
+    required Widget child,
+  }) {
+    final hasReactions = message.reactions.isNotEmpty;
+    final hasSeen = message.seenBy.isNotEmpty;
+    if (!hasReactions && !hasSeen) return child;
+    final indent = showSender && !message.isOwn ? 40.0 : 0.0;
+    return Column(
+      mainAxisSize: .min,
+      crossAxisAlignment: message.isOwn ? .end : .start,
+      children: [
+        child,
+        if (hasReactions) MessageReactions(message: message, indent: indent),
+        if (hasSeen)
+          SeenByAvatars(
+            seenBy: message.seenBy,
+            isOwn: message.isOwn,
+            indent: indent,
+          ),
+      ],
     );
   }
 
