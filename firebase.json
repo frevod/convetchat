@@ -1,0 +1,30 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "convetchat",
+          "appId": "1:155756794559:android:fda82915242384d35fec0a",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "convetchat",
+          "configurations": {
+            "android": "1:155756794559:android:fda82915242384d35fec0a",
+            "ios": "1:155756794559:ios:1f17d80f7b4256c85fec0a",
+            "macos": "1:155756794559:ios:1f17d80f7b4256c85fec0a",
+            "web": "1:155756794559:web:fd7bad2ebdac0f6b5fec0a",
+            "windows": "1:155756794559:web:568b95bb4ee0efea5fec0a"
+          }
+        }
+      }
+    }
+  },
+  "crashlytics": {
+    "symbolication": {
+      "uploadSymbols": true
+    }
+  }
+}

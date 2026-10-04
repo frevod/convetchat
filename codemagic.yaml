@@ -1,0 +1,30 @@
+workflows:
+  ios-nosign:
+    name: iOS unsigned IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - telegram
+    scripts:
+      - name: Generate .env from CI variables
+        script: |
+          printf 'TELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\n' \
+            "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" > .env
+      - name: Install dependencies
+        script: flutter pub get
+      - name: Build unsigned app bundle
+        script: flutter build ios --no-codesign
+      - name: Package IPA for sideloading
+        script: |
+          cd build/ios/iphoneos
+          rm -rf Payload ConvetChat-unsigned.ipa
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -qry ConvetChat-unsigned.ipa Payload
+          rm -rf Payload
+    artifacts:
+      - build/ios/iphoneos/*.ipa

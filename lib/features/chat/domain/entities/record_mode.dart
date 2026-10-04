@@ -1,0 +1,4 @@
+enum RecordMode() {
+  voice,
+  circle,
+}

@@ -1,0 +1,650 @@
+import 'dart:async';
+
+import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
+import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/core/utils/message_format.dart';
+import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
+import 'package:convetchat/features/chat/domain/services/circle_playback_coordinator.dart';
+import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
+import 'package:convetchat/features/chat/ui/widgets/video_player_page_andr.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:talker_flutter/talker_flutter.dart';
+import 'package:video_player/video_player.dart';
+
+class const MediaMessageAndr({
+  required final ChatMessage message,
+  final bool previewOnly = false,
+  final bool highlighted = false,
+  super.key,
+}) extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final media = message.media!;
+    if (media.kind == .video && media.isCircle) {
+      return _CircleTile(
+        message: message,
+        previewOnly: previewOnly,
+        highlighted: highlighted,
+      );
+    }
+    if (media.kind == .video) {
+      return _VideoTile(message: message, previewOnly: previewOnly);
+    }
+    return _PhotoTile(message: message, previewOnly: previewOnly);
+  }
+}
+
+class const _CircleTile({
+  required final ChatMessage message,
+  required final bool previewOnly,
+  final bool highlighted = false,
+}) extends StatefulWidget {
+  static const _collapsed = 168.0;
+  static const _expanded = 260.0;
+
+  @override
+  State<_CircleTile> createState() => _CircleTileState();
+}
+
+class _CircleTileState() extends State<_CircleTile> {
+  Future<Uint8List>? _thumb;
+  VideoPlayerController? _video;
+  bool _playing = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.message.media?.hasThumb == true) {
+      _thumb = _loadThumb();
+    }
+    getIt<CirclePlaybackCoordinator>().addListener(_onCoordinator);
+  }
+
+  @override
+  void didUpdateWidget(_CircleTile old) {
+    super.didUpdateWidget(old);
+    if (_thumb == null &&
+        widget.message.media?.hasThumb == true &&
+        old.message.media?.hasThumb != true) {
+      _thumb = _loadThumb();
+    }
+  }
+
+  Future<Uint8List> _loadThumb() => context.read<ChatCubit>().mediaBytes(
+    eventId: widget.message.id,
+    thumb: true,
+  );
+
+  @override
+  void dispose() {
+    getIt<CirclePlaybackCoordinator>()
+      ..removeListener(_onCoordinator)
+      ..playStopped(widget.message.id);
+    _video?.dispose();
+    super.dispose();
+  }
+
+  void _onCoordinator() {
+    if (!_playing) return;
+    if (getIt<CirclePlaybackCoordinator>().activeId == widget.message.id) {
+      return;
+    }
+    _playing = false;
+    unawaited(_video?.pause());
+    if (mounted) setState(() {});
+  }
+
+  void _onVideoProgress() {
+    final controller = _video;
+    if (controller == null || !_playing) return;
+    final value = controller.value;
+    if (!value.isInitialized || value.duration <= Duration.zero) return;
+    if (value.position >= value.duration && !value.isPlaying) {
+      _playing = false;
+      getIt<CirclePlaybackCoordinator>().playStopped(widget.message.id);
+      unawaited(controller.pause());
+      unawaited(controller.seekTo(Duration.zero));
+      if (mounted) setState(() {});
+    }
+  }
+
+  bool get _sending => widget.message.status == .sending;
+
+  Future<void> _toggle() async {
+    if (widget.previewOnly || _sending || _busy) return;
+    if (_playing) {
+      _playing = false;
+      getIt<CirclePlaybackCoordinator>().playStopped(widget.message.id);
+      await _video?.pause();
+      if (mounted) setState(() {});
+      return;
+    }
+    if (_video == null) {
+      setState(() => _busy = true);
+      try {
+        final cubit = context.read<ChatCubit>();
+        final file = await cubit.videoFile(
+          eventId: widget.message.id,
+          fileName: widget.message.media?.fileName,
+          mimeType: widget.message.media?.mimeType,
+        );
+        final controller = VideoPlayerController.file(file);
+        await controller.initialize();
+        await controller.setLooping(false);
+        if (!mounted) {
+          await controller.dispose();
+          return;
+        }
+        controller.addListener(_onVideoProgress);
+        _video = controller;
+      } catch (e, s) {
+        getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      if (mounted) setState(() => _busy = false);
+    }
+    try {
+      await _video?.play();
+    } catch (e, s) {
+      getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+      return;
+    }
+    getIt<CirclePlaybackCoordinator>().playStarted(widget.message.id);
+    if (mounted) setState(() => _playing = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = widget.previewOnly;
+    final playing = _playing && _video != null;
+    final size = playing ? _CircleTile._expanded : _CircleTile._collapsed;
+    return GestureDetector(
+      onTap: preview || _sending ? null : _toggle,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        width: size,
+        height: size,
+        decoration: widget.highlighted
+            ? BoxDecoration(
+                shape: .circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2.5,
+                ),
+              )
+            : null,
+        child: ClipOval(
+          child: Stack(
+            fit: .expand,
+            children: [
+              _ThumbBody(thumb: _thumb),
+              if (playing) _CircleVideoFill(controller: _video!, size: size),
+              if (_busy || _sending)
+                const Center(
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: M3EProgressIndicator.circularWavy(size: 36),
+                  ),
+                )
+              else if (!playing)
+                const Center(
+                  child: Icon(
+                    Icons.play_arrow_rounded,
+                    size: 44,
+                    color: Color(0xFFFFFFFF),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class const _ThumbBody({required final Future<Uint8List>? thumb})
+    extends StatelessWidget {
+  static const _fallback = ColoredBox(color: Color(0xFF000000));
+
+  @override
+  Widget build(BuildContext context) {
+    final thumb = this.thumb;
+    if (thumb == null) return _fallback;
+    return FutureBuilder<Uint8List>(
+      future: thumb,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes == null || bytes.isEmpty) return _fallback;
+        return Image.memory(
+          bytes,
+          fit: .cover,
+          errorBuilder: (_, _, _) => _fallback,
+        );
+      },
+    );
+  }
+}
+
+class const _CircleVideoFill({
+  required final VideoPlayerController controller,
+  required final double size,
+}) extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final raw = controller.value.aspectRatio;
+    final ar = raw <= 0 ? 1.0 : raw;
+    return FittedBox(
+      fit: .cover,
+      clipBehavior: .hardEdge,
+      child: SizedBox(
+        width: size,
+        height: size / ar,
+        child: VideoPlayer(controller),
+      ),
+    );
+  }
+}
+
+class const _PhotoTile({
+  required final ChatMessage message,
+  required final bool previewOnly,
+}) extends StatefulWidget {
+  @override
+  State<_PhotoTile> createState() => _PhotoTileState();
+}
+
+class _PhotoTileState() extends State<_PhotoTile> {
+  late Future<Uint8List> _thumb;
+
+  @override
+  void initState() {
+    super.initState();
+    _thumb = _load();
+  }
+
+  Future<Uint8List> _load() {
+    final cubit = context.read<ChatCubit>();
+    if (widget.previewOnly) {
+      final cached = cubit.cachedMediaBytes(eventId: widget.message.id);
+      if (cached != null) return SynchronousFuture(cached);
+    }
+    return cubit.mediaBytes(eventId: widget.message.id, thumb: true);
+  }
+
+  void _retry() => setState(() => _thumb = _load());
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = widget.previewOnly;
+    return FutureBuilder<Uint8List>(
+      future: _thumb,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        if (bytes != null) {
+          return _MediaFrame(
+            message: widget.message,
+            interactive: !preview,
+            onTap: preview ? null : () => _openViewer(context, bytes),
+            child: Image.memory(bytes, fit: .cover),
+          );
+        }
+        if (snapshot.hasError) {
+          return _MediaFrame(
+            message: widget.message,
+            interactive: !preview,
+            center: M3EIconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              variant: .tonal,
+              onPressed: preview ? null : _retry,
+            ),
+            child: const SizedBox.expand(),
+          );
+        }
+        return _MediaFrame(
+          message: widget.message,
+          interactive: !preview,
+          center: preview
+              ? null
+              : const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: M3EProgressIndicator.circularWavy(size: 40),
+                ),
+          child: const SizedBox.expand(),
+        );
+      },
+    );
+  }
+
+  void _openViewer(BuildContext context, Uint8List thumb) {
+    final cubit = context.read<ChatCubit>();
+    final full = cubit.mediaBytes(eventId: widget.message.id, thumb: false);
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _PhotoViewerPage(full: full, thumb: thumb),
+      ),
+    );
+  }
+}
+
+class const _VideoTile({
+  required final ChatMessage message,
+  required final bool previewOnly,
+}) extends StatefulWidget {
+  @override
+  State<_VideoTile> createState() => _VideoTileState();
+}
+
+class _VideoTileState() extends State<_VideoTile> {
+  late Future<Uint8List> _thumb;
+
+  @override
+  void initState() {
+    super.initState();
+    _thumb = _load();
+  }
+
+  Future<Uint8List> _load() {
+    final cubit = context.read<ChatCubit>();
+    if (widget.previewOnly) {
+      final cached = cubit.cachedMediaBytes(eventId: widget.message.id);
+      if (cached != null) return SynchronousFuture(cached);
+    }
+    return cubit.mediaBytes(eventId: widget.message.id, thumb: true);
+  }
+
+  void _retryThumb() => setState(() => _thumb = _load());
+
+  void _open() {
+    final cubit = context.read<ChatCubit>();
+    final file = cubit.videoFile(
+      eventId: widget.message.id,
+      fileName: widget.message.media?.fileName,
+      mimeType: widget.message.media?.mimeType,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => VideoPlayerPageAndr(file: file)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = widget.previewOnly;
+    return FutureBuilder<Uint8List>(
+      future: _thumb,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        final center = Container(
+          width: 52,
+          height: 52,
+          decoration: const BoxDecoration(
+            color: Color(0xB3000000),
+            shape: .circle,
+          ),
+          child: const Icon(
+            Icons.play_arrow_rounded,
+            size: 32,
+            color: Color(0xFFFFFFFF),
+          ),
+        );
+        if (bytes != null) {
+          return _MediaFrame(
+            message: widget.message,
+            interactive: !preview,
+            onTap: preview ? null : _open,
+            center: center,
+            child: Image.memory(bytes, fit: .cover),
+          );
+        }
+        if (snapshot.hasError) {
+          return _MediaFrame(
+            message: widget.message,
+            interactive: !preview,
+            onTap: preview ? null : _retryThumb,
+            center: const Icon(
+              Icons.refresh_rounded,
+              size: 28,
+              color: Color(0xFFFFFFFF),
+            ),
+            child: const SizedBox.expand(),
+          );
+        }
+        return _MediaFrame(
+          message: widget.message,
+          interactive: !preview,
+          center: preview
+              ? null
+              : const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: M3EProgressIndicator.circularWavy(size: 40),
+                ),
+          child: const SizedBox.expand(),
+        );
+      },
+    );
+  }
+}
+
+class const _MediaFrame({
+  required final ChatMessage message,
+  required final Widget child,
+  final bool interactive = true,
+  final Widget? center,
+  final VoidCallback? onTap,
+}) extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final media = message.media!;
+    final scheme = Theme.of(context).colorScheme;
+    final maxWidth = MediaQuery.sizeOf(context).width * 0.68;
+    final height = (maxWidth / media.aspect).clamp(80.0, 340.0);
+    final caption = media.caption;
+    return GestureDetector(
+      onTap: interactive ? onTap : null,
+      child: SizedBox(
+        width: maxWidth,
+        child: Column(
+          mainAxisSize: .min,
+          crossAxisAlignment: .start,
+          children: [
+            SizedBox(
+              width: maxWidth,
+              height: height,
+              child: Stack(
+                fit: .expand,
+                children: [
+                  ClipRRect(borderRadius: .circular(14), child: child),
+                  if (media.kind == .video && media.durationMs != null)
+                    Positioned(
+                      left: 8,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xCC000000),
+                          borderRadius: .circular(8),
+                        ),
+                        child: Text(
+                          _formatDuration(media.durationMs!),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFFFFFFF),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (center != null) Center(child: center),
+                  if (message.isOwn && message.status == .failed && interactive)
+                    Positioned(
+                      top: 6,
+                      right: 6,
+                      child: GestureDetector(
+                        onTap: () => context
+                            .read<ChatCubit>()
+                            .cancelSendMessage(message),
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: const BoxDecoration(
+                            color: Color(0xB3000000),
+                            shape: .circle,
+                          ),
+                          child: const Icon(
+                            Icons.close_rounded,
+                            size: 15,
+                            color: Color(0xFFFFFFFF),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    right: 6,
+                    bottom: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC000000),
+                        borderRadius: .circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: .min,
+                        children: [
+                          Text(
+                            messageClockText(message.time),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFFFFFFFF),
+                            ),
+                          ),
+                          if (message.status != null) ...[
+                            const SizedBox(width: 3),
+                            if (message.isOwn && message.status == .failed)
+                              GestureDetector(
+                                onTap: interactive
+                                    ? () => context
+                                          .read<ChatCubit>()
+                                          .retrySendMessage(message)
+                                    : null,
+                                child: _OverlayStatusIcon(
+                                  status: message.status!,
+                                ),
+                              )
+                            else
+                              _OverlayStatusIcon(status: message.status!),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (caption != null && caption.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
+                child: Text(
+                  caption,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: message.isOwn
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _formatDuration(int ms) {
+    final d = Duration(milliseconds: ms);
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+}
+
+class const _OverlayStatusIcon({required final MessageStatus status})
+    extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return switch (status) {
+      .sending => const SizedBox(
+        width: 10,
+        height: 10,
+        child: AdaptiveLoadingIndicator(color: Color(0xFFFFFFFF)),
+      ),
+      .sent => const Icon(
+        Icons.done_rounded,
+        size: 12,
+        color: Color(0xB3FFFFFF),
+      ),
+      .read => const Icon(
+        Icons.done_all_rounded,
+        size: 12,
+        color: Color(0xFFFFFFFF),
+      ),
+      .failed => const Icon(
+        Icons.error_rounded,
+        size: 12,
+        color: Color(0xFFFF8A80),
+      ),
+    };
+  }
+}
+
+class const _PhotoViewerPage({
+  required final Future<Uint8List> full,
+  required final Uint8List thumb,
+}) extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF000000),
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: FutureBuilder<Uint8List>(
+                future: full,
+                builder: (context, snapshot) {
+                  final bytes = snapshot.data ?? thumb;
+                  return InteractiveViewer(
+                    minScale: 0.5,
+                    maxScale: 4,
+                    child: Image.memory(bytes, fit: .contain),
+                  );
+                },
+              ),
+            ),
+            Positioned(
+              top: 8,
+              left: 8,
+              child: M3EIconButton(
+                icon: const Icon(Icons.close_rounded),
+                variant: .tonal,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
