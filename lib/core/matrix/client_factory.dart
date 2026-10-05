@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_vodozemac/flutter_vodozemac.dart' as vod;
 import 'package:matrix/matrix.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'matrix_database_builder.dart';
 import 'session_backup.dart';
 
 class ClientFactory() {
   static const String clientName = 'convetchat';
+  static const String experimentalDehydratedDevicesKey =
+      'experimental_dehydrated_devices';
 
   static bool _vodozemacReady = false;
   static Future<void>? _vodozemacFlight;
@@ -31,6 +34,15 @@ class ClientFactory() {
       rethrow;
     } finally {
       _vodozemacFlight = null;
+    }
+  }
+
+  static Future<bool> experimentalDehydratedDevicesEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(experimentalDehydratedDevicesKey) ?? true;
+    } catch (_) {
+      return true;
     }
   }
 
@@ -64,7 +76,8 @@ class ClientFactory() {
       defaultNetworkRequestTimeout: const Duration(minutes: 1),
 
       shareKeysWith: .all,
-      enableDehydratedDevices: false,
+      enableDehydratedDevices:
+          await experimentalDehydratedDevicesEnabled(),
     );
 
     try {

@@ -33,12 +33,15 @@ class VoicePlaybackService() {
   int _loadToken = 0;
 
   final _controller = StreamController<VoicePlaybackState>.broadcast();
+  final _completedController = StreamController<String>.broadcast();
 
   this {
     _subscribe(_player);
   }
 
   Stream<VoicePlaybackState> get stream => _controller.stream;
+
+  Stream<String> get completed => _completedController.stream;
 
   VoicePlaybackState get state => VoicePlaybackState(
     eventId: _currentEventId,
@@ -129,11 +132,15 @@ class VoicePlaybackService() {
     });
     _stateSub = player.playerStateStream.listen((playerState) async {
       if (playerState.processingState == ProcessingState.completed) {
+        final finishedId = _currentEventId;
         await player.pause();
         await player.seek(Duration.zero);
         _playing = false;
         _position = Duration.zero;
         _emit();
+        if (finishedId != null && !_completedController.isClosed) {
+          _completedController.add(finishedId);
+        }
         return;
       }
       _playing = playerState.playing;
@@ -148,5 +155,6 @@ class VoicePlaybackService() {
     _durationSub?.cancel();
     unawaited(_player.dispose());
     _controller.close();
+    _completedController.close();
   }
 }

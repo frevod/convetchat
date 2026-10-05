@@ -1,5 +1,6 @@
 import 'package:convetchat/app/theme.dart';
 import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/core/security/app_lock_gate.dart';
 import 'package:convetchat/core/platform_style.dart';
 import 'package:convetchat/core/theme/accent_color_store.dart';
 import 'package:convetchat/core/theme/theme_mode_store.dart';
@@ -37,7 +38,9 @@ class const _AppView() extends StatelessWidget {
                 platformBrightness: _resolveBrightness(context, themeMode),
               ),
               // ignore: deprecated_member_use
-              child: MaterialUiCompatibilityBridge(child: child!),
+              child: MaterialUiCompatibilityBridge(
+                child: AppLockGate(child: child!),
+              ),
             ),
           );
         },
@@ -77,7 +80,9 @@ class const _AppView() extends StatelessWidget {
                     return MaterialUiCompatibilityBridge(
                       child: M3ETheme(
                         data: m3eTheme,
-                        child: child ?? const SizedBox.shrink(),
+                        child: AppLockGate(
+                          child: child ?? const SizedBox.shrink(),
+                        ),
                       ),
                     );
                   },

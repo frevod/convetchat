@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:convetchat/core/logging/talker.dart';
 import 'package:convetchat/core/matrix/client_factory.dart';
@@ -63,6 +64,53 @@ const AndroidNotificationAction _muteAction = AndroidNotificationAction(
 
 const List<AndroidNotificationAction> _messageActions =
     <AndroidNotificationAction>[_replyAction, _markAsReadAction, _muteAction];
+
+/// Имя порта главного изолята: если приложение живо, фоновый тап
+/// пересылается туда и выполняется уже прогретым клиентом с ключами,
+/// а не вторым клиентом с нуля (как у FluffyChat).
+const String pushActionPortName = 'convetchat_push_action_port';
+
+String serializeNotificationResponse(NotificationResponse response) =>
+    jsonEncode({
+      'type': response.notificationResponseType.name,
+      'id': response.id,
+      'actionId': response.actionId,
+      'input': response.input,
+      'payload': response.payload,
+    });
+
+NotificationResponse? deserializeNotificationResponse(String raw) {
+  try {
+    final json = jsonDecode(raw) as Map<String, dynamic>;
+    final typeName = json['type'] as String?;
+    final type = NotificationResponseType.values
+        .where((t) => t.name == typeName)
+        .firstOrNull;
+    if (type == null) return null;
+    return NotificationResponse(
+      notificationResponseType: type,
+      id: (json['id'] as num?)?.toInt(),
+      actionId: json['actionId'] as String?,
+      input: json['input'] as String?,
+      payload: json['payload'] as String?,
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Кнопки только для сообщений, как у FluffyChat: у инвайтов,
+/// звонков и прочих типов их нет (раньше висели всегда и везде).
+List<AndroidNotificationAction>? _actionsForEventType(String eventType) {
+  switch (eventType) {
+    case EventTypes.Message:
+    case EventTypes.Encrypted:
+    case EventTypes.Sticker:
+      return _messageActions;
+    default:
+      return null;
+  }
+}
 
 void registerPushBackgroundHandler() {
   if (kIsWeb || !(Platform.isAndroid || Platform.isIOS)) return;
@@ -256,7 +304,16 @@ Future<void> showFallbackNotification({
       title: 'Новое сообщение в ConvetChat',
       body: 'Откройте приложение, чтобы прочитать.',
       notificationDetails: NotificationDetails(
-        android: _baseAndroidDetails(),
+        android: AndroidNotificationDetails(
+          PushConfig.androidChannelId,
+          PushConfig.androidChannelName,
+          channelDescription: PushConfig.androidChannelDescription,
+          icon: '@mipmap/launcher_icon',
+          importance: Importance.high,
+          priority: Priority.max,
+          category: AndroidNotificationCategory.message,
+          groupKey: _notificationGroup,
+        ),
         iOS: DarwinNotificationDetails(
           categoryIdentifier: PushConfig.iosCategoryId,
           threadIdentifier: roomId,
@@ -278,6 +335,18 @@ Future<void> showFallbackNotification({
 
 @pragma('vm:entry-point')
 Future<void> notificationTapBackground(NotificationResponse response) async {
+  final mainPort = IsolateNameServer.lookupPortByName(pushActionPortName);
+  if (mainPort != null) {
+    try {
+      mainPort.send(serializeNotificationResponse(response));
+    } catch (_) {}
+    return;
+  }
+
+  if (response.notificationResponseType !=
+      NotificationResponseType.selectedNotificationAction) {
+    return;
+  }
   final actionId = response.actionId;
   if (actionId != markAsReadActionId &&
       actionId != replyActionId &&
@@ -294,7 +363,7 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
   }
   final roomId = data?['roomId'] as String?;
   final eventId = data?['eventId'] as String?;
-  if (roomId == null || eventId == null) return;
+  if (roomId == null) return;
 
   final talker = createTalker();
   final localNotifications = FlutterLocalNotificationsPlugin();
@@ -309,25 +378,36 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
       talker.warning('[push:tap] Клиент не залогинен, действие $actionId');
       return;
     }
-    final room = await _resolveRoom(client, roomId, talker);
+    try {
+      await client.roomsLoading?.timeout(const Duration(seconds: 15));
+      await client.accountDataLoading?.timeout(const Duration(seconds: 15));
+      await client.userDeviceKeysLoading?.timeout(const Duration(seconds: 15));
+    } on TimeoutException catch (e, s) {
+      talker.warning('[push:tap] Не дождались загрузки базы', e, s);
+    }
+    final room = client.getRoomById(roomId);
     switch (actionId) {
       case replyActionId:
         final input = response.input?.trim();
-        if (input != null && input.isNotEmpty) {
-          if (room != null) {
-            await room
-                .sendTextEvent(input, parseCommands: false)
-                .timeout(const Duration(seconds: 15));
-          } else {
-            talker.warning('[push:tap] Нет комнаты $roomId, ответ не отправлен');
-          }
+        if (input == null || input.isEmpty) {
+          talker.warning('[push:tap] Ответ без текста, отправлять нечего');
+          break;
         }
-        await _markRead(client, roomId, eventId, talker);
+        if (room == null) {
+          talker.warning('[push:tap] Нет комнаты $roomId, ответ не отправлен');
+          break;
+        }
+        await room
+            .sendTextEvent(
+              input,
+              parseCommands: false,
+              displayPendingEvent: false,
+            )
+            .timeout(const Duration(seconds: 20));
       case muteActionId:
         await _muteRoom(client, room, roomId, talker);
-        await _markRead(client, roomId, eventId, talker);
       default:
-        await _markRead(client, roomId, eventId, talker);
+        await _markRead(client, room, roomId, eventId, talker);
     }
   } on TimeoutException catch (e, s) {
     talker.error('[push:tap] Таймаут действия $actionId', e, s);
@@ -354,71 +434,52 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
   }
 }
 
-Future<Room?> _resolveRoom(Client client, String roomId, Talker talker) async {
-  try {
-    final cached = client.getRoomById(roomId);
-    if (cached != null) return cached;
-    try {
-      final fromDb = await client.database
-          .getSingleRoom(client, roomId)
-          .timeout(const Duration(seconds: 5));
-      if (fromDb != null) return fromDb;
-    } catch (e, s) {
-      talker.warning('[push:tap] Не удалось загрузить комнату из базы', e, s);
-    }
-    return Room(id: roomId, client: client);
-  } catch (e, s) {
-    talker.warning('[push:tap] Не удалось резолвнуть комнату', e, s);
-    return null;
-  }
-}
-
+/// Мьют как у FluffyChat — mentionsOnly.
 Future<void> _muteRoom(
   Client client,
   Room? room,
   String roomId,
   Talker talker,
 ) async {
+  if (room != null) {
+    await room
+        .setPushRuleState(PushRuleState.mentionsOnly)
+        .timeout(const Duration(seconds: 10));
+    return;
+  }
+  talker.warning('[push:tap] Комната неизвестна, мьют напрямую');
+  await client
+      .setPushRule(PushRuleKind.room, roomId, [])
+      .timeout(const Duration(seconds: 10));
+}
+
+/// Прочитанное через комнату (с публичным receipt, как у FluffyChat),
+/// fallback — напрямую через клиент.
+Future<void> _markRead(
+  Client client,
+  Room? room,
+  String roomId,
+  String? eventId,
+  Talker talker,
+) async {
+  final targetEventId = eventId ?? room?.lastEvent?.eventId;
+  if (targetEventId == null) {
+    talker.warning('[push:tap] Нечего отмечать прочитанным в $roomId');
+    return;
+  }
   try {
     if (room != null) {
       await room
-          .setPushRuleState(PushRuleState.dontNotify)
+          .setReadMarker(targetEventId, mRead: targetEventId)
           .timeout(const Duration(seconds: 10));
       return;
     }
   } catch (e, s) {
-    talker.warning('[push:tap] Мьют через Room не удался, пробую напрямую', e, s);
+    talker.warning('[push:tap] Read-marker через Room не удался', e, s);
   }
   await client
-      .setPushRule(
-        PushRuleKind.override,
-        roomId,
-        [],
-        conditions: [
-          PushCondition(
-            kind: PushRuleConditions.eventMatch.name,
-            key: 'room_id',
-            pattern: roomId,
-          ),
-        ],
-      )
+      .setReadMarker(roomId, mFullyRead: targetEventId, mRead: targetEventId)
       .timeout(const Duration(seconds: 10));
-}
-
-Future<void> _markRead(
-  Client client,
-  String roomId,
-  String eventId,
-  Talker talker,
-) async {
-  try {
-    await client
-        .setReadMarker(roomId, mFullyRead: eventId, mReadPrivate: eventId)
-        .timeout(const Duration(seconds: 10));
-  } catch (e, s) {
-    talker.warning('[push:tap] Не удалось отметить прочитанным', e, s);
-    rethrow;
-  }
 }
 
 Future<void> _cancelRoom(
@@ -625,7 +686,7 @@ Future<NotificationDetails> _detailsForEvent({
       ticker: ticker,
       when: event.originServerTs.millisecondsSinceEpoch,
       number: unreadCount,
-      actions: _messageActions,
+      actions: _actionsForEventType(event.type),
     ),
     iOS: iosDetails,
   );

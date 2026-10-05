@@ -5,6 +5,8 @@ class CirclePlaybackCoordinator() extends ChangeNotifier {
 
   String? get activeId => _activeId;
 
+  String? _autoplayId;
+
   void playStarted(String eventId) {
     if (_activeId == eventId) return;
     _activeId = eventId;
@@ -15,5 +17,16 @@ class CirclePlaybackCoordinator() extends ChangeNotifier {
     if (_activeId != eventId) return;
     _activeId = null;
     notifyListeners();
+  }
+
+  void requestAutoplay(String eventId) {
+    _autoplayId = eventId;
+    notifyListeners();
+  }
+
+  bool consumeAutoplay(String eventId) {
+    if (_autoplayId != eventId) return false;
+    _autoplayId = null;
+    return true;
   }
 }

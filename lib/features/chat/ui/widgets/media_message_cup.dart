@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/core/utils/message_format.dart';
+import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/video_player_page.dart';
@@ -177,7 +178,10 @@ class const _MediaFrame({
   Widget build(BuildContext context) {
     final msg = message;
     final media = msg.media!;
-    final maxWidth = MediaQuery.sizeOf(context).width * 0.68;
+    final maxWidth = (MediaQuery.sizeOf(context).width * 0.68).clamp(
+      0.0,
+      480.0,
+    );
     final height = (maxWidth / media.aspect).clamp(80.0, 340.0);
     final caption = media.caption;
     return GestureDetector(
@@ -297,15 +301,29 @@ class const _MediaFrame({
             if (caption != null && caption.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
-                child: Text(
-                  caption,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: msg.isOwn
-                        ? CupertinoColors.white
-                        : CupertinoColors.secondaryLabel.resolveFrom(context),
-                  ),
-                ),
+                child: media.captionHtml != null
+                    ? FormattedText(
+                        html: media.captionHtml!,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: msg.isOwn
+                              ? CupertinoColors.white
+                              : CupertinoColors.secondaryLabel.resolveFrom(
+                                  context,
+                                ),
+                        ),
+                      )
+                    : FormattedText.plain(
+                        caption,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: msg.isOwn
+                              ? CupertinoColors.white
+                              : CupertinoColors.secondaryLabel.resolveFrom(
+                                  context,
+                                ),
+                        ),
+                      ),
               ),
           ],
         ),

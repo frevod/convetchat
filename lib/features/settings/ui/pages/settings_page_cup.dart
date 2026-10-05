@@ -112,7 +112,7 @@ class const SettingsPageCup({super.key}) extends StatelessWidget {
                 ),
                 title: const Text('Чат'),
                 trailing: const CupertinoListTileChevron(),
-                onTap: () {},
+                onTap: () => context.push('/settings/chat'),
               ),
               CupertinoListTile(
                 leading: _SettingsIcon(
@@ -144,7 +144,6 @@ class const SettingsPageCup({super.key}) extends StatelessWidget {
           ),
           CupertinoListSection.insetGrouped(
             backgroundColor: CupertinoColors.transparent,
-
             children: [
               CupertinoListTile(
                 leading: _SettingsIcon(
@@ -163,6 +162,15 @@ class const SettingsPageCup({super.key}) extends StatelessWidget {
                 title: const Text('Логи'),
                 trailing: const CupertinoListTileChevron(),
                 onTap: () => context.push('/talker-logs'),
+              ),
+              CupertinoListTile(
+                leading: _SettingsIcon(
+                  icon: CupertinoIcons.hammer_fill,
+                  color: CupertinoColors.systemPurple.resolveFrom(context),
+                ),
+                title: const Text('Экспериментальные'),
+                trailing: const CupertinoListTileChevron(),
+                onTap: () => context.push('/settings/experimental'),
               ),
             ],
           ),

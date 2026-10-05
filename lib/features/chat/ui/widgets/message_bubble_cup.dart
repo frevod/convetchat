@@ -1,4 +1,5 @@
 import 'package:convetchat/core/utils/message_format.dart';
+import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/core/widgets/mxc_avatar.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
@@ -20,6 +21,10 @@ class const MessageBubbleCup({
   final GlobalKey? anchorKey,
   final bool aboveSameSender = false,
   final bool belowSameSender = false,
+
+  /// Включено в режиме выбора сообщений: текст можно выделять
+  /// удержанием, свайп-ответ при этом отключён чтобы не мешать выделению.
+  final bool textSelectable = false,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -36,7 +41,11 @@ class const MessageBubbleCup({
     final contentColor = isOwn
         ? white
         : CupertinoColors.label.resolveFrom(context);
-    final timeColor = isOwn
+    final bigSize = message.bigEmojiSize;
+    final bigContentColor = CupertinoColors.label.resolveFrom(context);
+    final timeColor = bigSize != null
+        ? CupertinoColors.secondaryLabel.resolveFrom(context)
+        : isOwn
         ? white.withValues(alpha: 0.85)
         : CupertinoColors.secondaryLabel.resolveFrom(context);
 
@@ -49,7 +58,9 @@ class const MessageBubbleCup({
         ? white
         : CupertinoColors.secondaryLabel.resolveFrom(context);
 
-    final bubbleColor = placeholder
+    final bubbleColor = bigSize != null
+        ? const Color(0x00000000)
+        : placeholder
         ? CupertinoColors.tertiarySystemFill.resolveFrom(context)
         : highlighted
         ? Color.alphaBlend(const Color(0x40000000), baseColor)
@@ -66,7 +77,7 @@ class const MessageBubbleCup({
 
     final bubble = ConstrainedBox(
       constraints: BoxConstraints(
-        maxWidth: MediaQuery.sizeOf(context).width * 0.75,
+        maxWidth: (MediaQuery.sizeOf(context).width * 0.75).clamp(0.0, 520.0),
       ),
       child: Container(
         margin: EdgeInsets.only(
@@ -96,43 +107,68 @@ class const MessageBubbleCup({
                 overflow: .ellipsis,
                 style: TextStyle(fontSize: 12, fontWeight: .w600, color: blue),
               ),
-            if (!placeholder && message.replyToEventId != null)
-              MessageReplyQuote(
-                senderName: message.replySenderName,
-                body: message.replyBody,
-                isOwn: isOwn,
-                onTap: () => context.read<ChatCubit>().jumpToMessage(
-                  message.replyToEventId!,
-                ),
+            IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: .stretch,
+                mainAxisSize: .min,
+                children: [
+                  if (!placeholder && message.replyToEventId != null)
+                    MessageReplyQuote(
+                      senderName: message.replySenderName,
+                      body: message.replyBody,
+                      isOwn: isOwn,
+                      onTap: () => context.read<ChatCubit>().jumpToMessage(
+                        message.replyToEventId!,
+                      ),
+                    ),
+                  if (deleted)
+                    MessageDeletedLabel(color: placeholderColor)
+                  else if (undecryptable)
+                    MessageDeletedLabel(
+                      color: placeholderColor,
+                      text: 'Не удалось расшифровать сообщение',
+                      icon: CupertinoIcons.lock,
+                    )
+                  else if (hasMedia)
+                    MediaMessage(message: message)
+                  else if (message.voice != null)
+                    VoicePlayer(
+                      voice: message.voice!,
+                      accent: isOwn ? white : contentColor,
+                      track: contentColor.withValues(alpha: 0.3),
+                      playIcon: CupertinoIcons.play_fill,
+                      pauseIcon: CupertinoIcons.pause_fill,
+                      iconColor: contentColor,
+                      buttonColor: isOwn
+                          ? white.withValues(alpha: 0.25)
+                          : CupertinoColors.tertiarySystemFill.resolveFrom(
+                              context,
+                            ),
+                      loadingColor: contentColor,
+                    )
+                  else if (bigSize != null)
+                    Text(
+                      message.body,
+                      style: TextStyle(
+                        fontSize: bigSize,
+                        color: bigContentColor,
+                      ),
+                    )
+                  else if (message.bodyHtml != null)
+                    FormattedText(
+                      html: message.bodyHtml!,
+                      style: TextStyle(fontSize: 15, color: contentColor),
+                      selectable: textSelectable,
+                    )
+                  else
+                    FormattedText.plain(
+                      message.body,
+                      style: TextStyle(fontSize: 15, color: contentColor),
+                      selectable: textSelectable,
+                    ),
+                ],
               ),
-            if (deleted)
-              MessageDeletedLabel(color: placeholderColor)
-            else if (undecryptable)
-              MessageDeletedLabel(
-                color: placeholderColor,
-                text: 'Не удалось расшифровать сообщение',
-                icon: CupertinoIcons.lock,
-              )
-            else if (hasMedia)
-              MediaMessage(message: message)
-            else if (message.voice != null)
-              VoicePlayer(
-                voice: message.voice!,
-                accent: isOwn ? white : contentColor,
-                track: contentColor.withValues(alpha: 0.3),
-                playIcon: CupertinoIcons.play_fill,
-                pauseIcon: CupertinoIcons.pause_fill,
-                iconColor: contentColor,
-                buttonColor: isOwn
-                    ? white.withValues(alpha: 0.25)
-                    : CupertinoColors.tertiarySystemFill.resolveFrom(context),
-                loadingColor: contentColor,
-              )
-            else
-              Text(
-                message.body,
-                style: TextStyle(fontSize: 15, color: contentColor),
-              ),
+            ),
             if (!hasMedia) ...[
               const SizedBox(height: 2),
               Row(
@@ -278,6 +314,11 @@ class const MessageBubbleCup({
   }
 
   Widget _swipeable(BuildContext context, Widget content) {
+    if (textSelectable) return content;
+    final swipeEnabled = context.select<ChatCubit, bool>(
+      (cubit) => cubit.state.swipeToReplyEnabled,
+    );
+    if (!swipeEnabled) return content;
     final blue = CupertinoColors.activeBlue.resolveFrom(context);
     return SwipeToReply(
       onReply: () => context.read<ChatCubit>().setReply(message),

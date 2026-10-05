@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
+import 'package:convetchat/core/platform_info.dart';
+import 'package:convetchat/core/platform_style.dart';
 import 'package:convetchat/core/push/push_service.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_send_restriction.dart';
@@ -12,7 +14,9 @@ import 'package:convetchat/features/chat/domain/entities/circle_video.dart';
 import 'package:convetchat/features/chat/domain/entities/pending_media.dart';
 import 'package:convetchat/features/chat/domain/entities/record_mode.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
+import 'package:convetchat/features/chat/domain/services/circle_playback_coordinator.dart';
 import 'package:convetchat/features/chat/domain/services/circle_video_service.dart';
+import 'package:convetchat/features/chat/domain/services/voice_playback_service.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_state.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
 import 'package:convetchat/features/encryption/ui/widgets/verification/verification_sheet.dart';
@@ -72,9 +76,16 @@ class ChatCubit(
       if (isClosed) return;
       emit(state.copyWith(pinnedEventIds: () => ids));
     });
+    _voiceCompletedSubscription = getIt<VoicePlaybackService>().completed.listen(
+      (eventId) {
+        if (isClosed) return;
+        unawaited(playNextAfter(eventId));
+      },
+    );
     inputController.addListener(_onInputChanged);
     _wasKeyboardVisible = _keyboardVisibleNow;
     WidgetsBinding.instance.addObserver(this);
+    _loadInteractionSettings();
   }
 
   bool _wasKeyboardVisible = false;
@@ -100,6 +111,28 @@ class ChatCubit(
     _wasKeyboardVisible = nowVisible;
   }
 
+  Future<void> _loadInteractionSettings() async {
+    try {
+      final sendOnEnter = await _repository.isSendOnEnterEnabled();
+      final swipe = await _repository.isSwipeToReplyEnabled();
+      final quick = await _repository.isQuickReactionEnabled();
+      final emoji = await _repository.getQuickReactionEmoji();
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          sendOnEnter: () => sendOnEnter,
+          swipeToReplyEnabled: () => swipe,
+          quickReactionEnabled: () => quick,
+          quickReactionEmoji: () => emoji,
+        ),
+      );
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось прочитать настройки ввода', e, s);
+    }
+  }
+
+  Future<void> refreshInteractionSettings() => _loadInteractionSettings();
+
   late final StreamSubscription<List<ChatMessage>> _subscription;
   late final StreamSubscription<List<({String id, String name})>>
   _typingSubscription;
@@ -107,6 +140,7 @@ class ChatCubit(
   _presenceSubscription;
   late final StreamSubscription<ChatSendRestriction> _restrictionSubscription;
   late final StreamSubscription<List<String>> _pinnedSubscription;
+  late final StreamSubscription<String> _voiceCompletedSubscription;
 
   String get roomId => _roomId;
 
@@ -170,6 +204,7 @@ class ChatCubit(
     unawaited(_presenceSubscription.cancel());
     unawaited(_restrictionSubscription.cancel());
     unawaited(_pinnedSubscription.cancel());
+    unawaited(_voiceCompletedSubscription.cancel());
     _highlightTimer?.cancel();
     _recordTick?.cancel();
     _circleAutoStop?.cancel();
@@ -398,6 +433,94 @@ class ChatCubit(
     );
   }
 
+  static const _videoExtensions = {
+    'mp4',
+    'mov',
+    'mkv',
+    'webm',
+    '3gp',
+    'avi',
+    'm4v',
+  };
+
+  static const _imageExtensions = {
+    'jpg',
+    'jpeg',
+    'png',
+    'gif',
+    'webp',
+    'bmp',
+    'heic',
+    'heif',
+  };
+
+  Future<void> attachLocalFiles(
+    List<({String path, String name})> files,
+  ) async {
+    if (isClosed || files.isEmpty) return;
+    final space = _maxPendingMedia - state.pendingMedia.length;
+    if (space <= 0) {
+      emit(
+        state.copyWith(
+          errorMessage: () => 'Максимум $_maxPendingMedia файлов за раз',
+        ),
+      );
+      return;
+    }
+    final items = <PendingMedia>[];
+    for (final entry in files.take(space)) {
+      if (isClosed) return;
+      try {
+        final file = File(entry.path);
+        if (!await file.exists()) continue;
+        final ext = path_lib
+            .extension(entry.name)
+            .replaceFirst('.', '')
+            .toLowerCase();
+        final isVideo = _videoExtensions.contains(ext);
+        Uint8List thumb = Uint8List(0);
+        int? width;
+        int? height;
+        if (_imageExtensions.contains(ext)) {
+          try {
+            final bytes = await file.readAsBytes();
+            final image = await decodeImageFromList(bytes);
+            width = image.width;
+            height = image.height;
+            image.dispose();
+            thumb = bytes;
+          } catch (_) {}
+        }
+        final side = _thumbSide(width ?? 0, height ?? 0);
+        items.add(
+          PendingMedia(
+            id:
+                '${DateTime.now().microsecondsSinceEpoch}_${entry.path.hashCode}',
+            filePath: entry.path,
+            fileName: entry.name,
+            isVideo: isVideo,
+            thumbBytes: thumb,
+            width: width,
+            height: height,
+            thumbWidth: side.$1,
+            thumbHeight: side.$2,
+          ),
+        );
+      } catch (e, s) {
+        getIt<Talker>().error('Не удалось подготовить файл', e, s);
+      }
+    }
+    if (isClosed || items.isEmpty) return;
+    emit(
+      state.copyWith(
+        pendingMedia: () => [...state.pendingMedia, ...items],
+        errorMessage: files.length > space
+            ? () => 'Максимум $_maxPendingMedia файлов за раз'
+            : null,
+      ),
+    );
+  }
+
   Future<void> removePending(String id) async {
     _dropPending(id);
   }
@@ -426,6 +549,51 @@ class ChatCubit(
           errorMessage: () => 'Не удалось отправить. Попробуйте снова',
         ),
       );
+    }
+  }
+
+  Future<void> playNextAfter(String eventId) async {
+    if (isClosed) return;
+    try {
+      if (!await _repository.isAutoplayEnabled()) return;
+      final voiceOn = await _repository.isVoiceAutoplayEnabled();
+      final videoOn = await _repository.isVideoAutoplayEnabled();
+      if (!voiceOn && !videoOn) return;
+      final voiceService = getIt<VoicePlaybackService>();
+      final current = voiceService.state;
+      if (current.eventId == eventId && current.playing) return;
+      final messages = state.messages;
+      final index = messages.indexWhere((m) => m.id == eventId);
+      if (index < 0 || isClosed) return;
+      final inlineCircles = !getIt<PlatformStyle>().isCupertino;
+      for (var j = index - 1; j >= 0; j--) {
+        if (isClosed) return;
+        final candidate = messages[j];
+        if (candidate.isDeleted ||
+            candidate.isUndecryptable ||
+            candidate.isState) {
+          continue;
+        }
+        if (candidate.status == .sending || candidate.status == .failed) {
+          continue;
+        }
+        final voice = candidate.voice;
+        if (voice != null && voiceOn) {
+          await voiceService.toggle(voice.eventId, voice.duration);
+          return;
+        }
+        final media = candidate.media;
+        if (media != null &&
+            media.kind == .video &&
+            media.isCircle &&
+            videoOn &&
+            inlineCircles) {
+          getIt<CirclePlaybackCoordinator>().requestAutoplay(candidate.id);
+          return;
+        }
+      }
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось продолжить воспроизведение', e, s);
     }
   }
 
@@ -710,10 +878,23 @@ class ChatCubit(
   }
 
   Future<void> toggleHeart(ChatMessage message) =>
-      toggleReaction(message, '❤️');
+      toggleQuickReaction(message);
+
+  Future<void> toggleQuickReaction(ChatMessage message) {
+    if (!state.quickReactionEnabled) return Future.value();
+    final emoji = state.quickReactionEmoji.isEmpty
+        ? '❤️'
+        : state.quickReactionEmoji;
+    return toggleReaction(message, emoji);
+  }
 
   Future<void> deleteMessage(ChatMessage message) async {
     if (message.isState) return;
+    if (message.isDeleted) return;
+    if (message.isUndecryptable) {
+      await _deleteUndecryptable(message);
+      return;
+    }
     if (!message.isOwn) {
       emit(
         state.copyWith(
@@ -730,21 +911,58 @@ class ChatCubit(
     }
   }
 
+  Future<void> _deleteUndecryptable(ChatMessage message) async {
+    if (message.isOwn) {
+      try {
+        await _repository.redactMessage(roomId: _roomId, eventId: message.id);
+      } catch (e, s) {
+        if (isClosed) return;
+        getIt<Talker>().error('[chat] Не удалось удалить сообщение', e, s);
+        emit(
+          state.copyWith(errorMessage: () => 'Не удалось удалить сообщение'),
+        );
+        return;
+      }
+    }
+    try {
+      await _repository.hideEvent(roomId: _roomId, eventId: message.id);
+    } catch (_) {
+      if (isClosed) return;
+      emit(state.copyWith(errorMessage: () => 'Не удалось удалить сообщение'));
+      return;
+    }
+    if (isClosed) return;
+    emit(
+      state.copyWith(
+        messages: () => state.messages.where((m) => m.id != message.id).toList(),
+      ),
+    );
+  }
+
   Future<void> deleteSelected() async {
     final ids = state.selectedEventIds;
     if (ids.isEmpty) return;
-    final mine = state.messages
-        .where((m) => ids.contains(m.id) && !m.isState && m.isOwn)
-        .map((m) => m.id)
+    final selected = state.messages
+        .where((m) => ids.contains(m.id) && !m.isState)
         .toList(growable: false);
     clearSelection();
-    if (mine.isEmpty) {
+    final undecryptable = selected
+        .where((m) => m.isUndecryptable)
+        .toList(growable: false);
+    final mine = selected
+        .where((m) => !m.isDeleted && !m.isUndecryptable && m.isOwn)
+        .map((m) => m.id)
+        .toList(growable: false);
+    if (undecryptable.isEmpty && mine.isEmpty) {
       emit(
         state.copyWith(
           errorMessage: () => 'Можно удалять только свои сообщения',
         ),
       );
       return;
+    }
+    for (final message in undecryptable) {
+      await _deleteUndecryptable(message);
     }
     for (final id in mine) {
       try {
@@ -859,6 +1077,7 @@ class ChatCubit(
 
   Future<void> toggleRecordMode() async {
     if (state.isRecording || _circleStopping) return;
+    if (!PlatformInfos.supportsCamera) return;
     if (state.recordMode == .circle) {
       emit(state.copyWith(recordMode: () => RecordMode.voice));
       unawaited(getIt<CircleVideoService>().disposePreview());
@@ -869,6 +1088,10 @@ class ChatCubit(
 
   Future<void> _ensureCirclePreview() async {
     if (state.recordMode != .circle || isClosed) return;
+    if (!PlatformInfos.supportsCamera) {
+      emit(state.copyWith(errorMessage: () => 'Кружки недоступны на десктопе'));
+      return;
+    }
     try {
       final status = await Permission.camera.request();
       if (isClosed || state.recordMode != .circle) return;

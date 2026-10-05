@@ -19,6 +19,8 @@ class const SettingsState({
   final bool notificationsEnabled = true,
 
   final bool profileSaving = false,
+
+  final bool? dehydratedDevicesEnabled,
 }) extends Equatable {
   SettingsState copyWith({
     bool Function()? isLoggingOut,
@@ -31,6 +33,7 @@ class const SettingsState({
     String? Function()? errorMessage,
     bool Function()? notificationsEnabled,
     bool Function()? profileSaving,
+    bool Function()? dehydratedDevicesEnabled,
   }) {
     return SettingsState(
       isLoggingOut: isLoggingOut != null ? isLoggingOut() : this.isLoggingOut,
@@ -49,6 +52,9 @@ class const SettingsState({
       profileSaving: profileSaving != null
           ? profileSaving()
           : this.profileSaving,
+      dehydratedDevicesEnabled: dehydratedDevicesEnabled != null
+          ? dehydratedDevicesEnabled()
+          : this.dehydratedDevicesEnabled,
     );
   }
 
@@ -64,5 +70,6 @@ class const SettingsState({
     errorMessage,
     notificationsEnabled,
     profileSaving,
+    dehydratedDevicesEnabled,
   ];
 }

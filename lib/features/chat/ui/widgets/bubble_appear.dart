@@ -2,14 +2,10 @@ import 'package:flutter/widgets.dart';
 
 class const BubbleAppear({
   super.key,
-  required this.isOwn,
-  required this.fresh,
-  required this.child,
+  required final bool isOwn,
+  required final bool fresh,
+  required final Widget child,
 }) extends StatefulWidget {
-  final bool isOwn;
-  final bool fresh;
-  final Widget child;
-
   @override
   State<BubbleAppear> createState() => _BubbleAppearState();
 }

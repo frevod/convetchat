@@ -1,3 +1,4 @@
+import 'package:convetchat/core/platform_info.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,14 +7,35 @@ import 'package:talker_flutter/talker_flutter.dart';
 class TelemetryService(final Talker _talker) {
   static const _consentKey = 'telemetry_consent';
 
+  static final bool _supported = PlatformInfos.supportsFirebase;
+
   bool _consent = false;
 
-  bool get hasConsent => _consent;
+  bool get hasConsent => _consent && _supported;
 
-  final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
-  final FirebaseCrashlytics _crashlytics = FirebaseCrashlytics.instance;
+  FirebaseAnalytics? _analytics;
+  FirebaseCrashlytics? _crashlytics;
+
+  FirebaseAnalytics? get _analyticsOrNull {
+    if (!_supported) return null;
+    try {
+      return _analytics ??= FirebaseAnalytics.instance;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  FirebaseCrashlytics? get _crashlyticsOrNull {
+    if (!_supported) return null;
+    try {
+      return _crashlytics ??= FirebaseCrashlytics.instance;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<void> init() async {
+    if (!_supported) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       _consent = prefs.getBool(_consentKey) ?? false;
@@ -24,11 +46,12 @@ class TelemetryService(final Talker _talker) {
   }
 
   Future<void> _applyConsent() async {
-    await _analytics.setAnalyticsCollectionEnabled(_consent);
-    await _crashlytics.setCrashlyticsCollectionEnabled(_consent);
+    await _analyticsOrNull?.setAnalyticsCollectionEnabled(_consent);
+    await _crashlyticsOrNull?.setCrashlyticsCollectionEnabled(_consent);
   }
 
   Future<void> setConsent(bool enabled) async {
+    if (!_supported) return;
     if (_consent == enabled) return;
     _consent = enabled;
     try {
@@ -43,7 +66,7 @@ class TelemetryService(final Talker _talker) {
   void logEvent(String name, {Map<String, Object>? parameters}) {
     if (!hasConsent) return;
     try {
-      _analytics.logEvent(name: name, parameters: parameters);
+      _analyticsOrNull?.logEvent(name: name, parameters: parameters);
     } catch (e) {
       _talker.error('[telemetry] logEvent($name) упал', e);
     }
@@ -52,11 +75,13 @@ class TelemetryService(final Talker _talker) {
   Future<void> setUserId(String? userId) async {
     if (!hasConsent) return;
     try {
-      await _analytics.setUserId(id: userId);
+      final analytics = _analyticsOrNull;
+      final crashlytics = _crashlyticsOrNull;
+      await analytics?.setUserId(id: userId);
       if (userId == null) {
-        await _crashlytics.setUserIdentifier('');
+        await crashlytics?.setUserIdentifier('');
       } else {
-        await _crashlytics.setUserIdentifier(userId);
+        await crashlytics?.setUserIdentifier(userId);
       }
     } catch (e) {
       _talker.error('[telemetry] setUserId упал', e);
@@ -64,9 +89,9 @@ class TelemetryService(final Talker _talker) {
   }
 
   void logError(Object error, StackTrace stackTrace) {
-    if (!hasConsent) return;
+    if (!_supported || !hasConsent) return;
     try {
-      _crashlytics.recordError(error, stackTrace);
+      _crashlyticsOrNull?.recordError(error, stackTrace);
     } catch (e) {
       _talker.error('[telemetry] logError упал', e);
     }

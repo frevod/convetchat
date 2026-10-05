@@ -1,10 +1,12 @@
 import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/core/matrix/client_factory.dart';
 import 'package:convetchat/features/encryption/domain/entities/crypto_identity_state.dart';
 import 'package:convetchat/features/encryption/domain/entities/verified_device.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:matrix/encryption.dart';
 import 'package:matrix/matrix.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 class EncryptionRepositoryImpl(final Client _client)
@@ -45,6 +47,7 @@ class EncryptionRepositoryImpl(final Client _client)
       setupSelfSigningKey: true,
       setupUserSigningKey: true,
     );
+    await _setupDehydratedDevice(recoveryKey);
     return recoveryKey;
   }
 
@@ -56,7 +59,22 @@ class EncryptionRepositoryImpl(final Client _client)
       getIt<Talker>().error('[e2ee:restore] restoreCryptoIdentity упал', e, s);
       rethrow;
     }
-    await signOwnDevice(keyOrPassphrase);
+    await _setupDehydratedDevice(keyOrPassphrase);
+  }
+
+  Future<void> _setupDehydratedDevice(String keyOrPassphrase) async {
+    try {
+      if (!await isDehydratedDevicesEnabled()) return;
+      final encryption = _client.encryption;
+      if (encryption == null || encryption.crossSigning.enabled != true) {
+        return;
+      }
+      final handle = encryption.ssss.open();
+      await handle.unlock(keyOrPassphrase: keyOrPassphrase, postUnlock: false);
+      await _client.dehydratedDeviceSetup(handle);
+    } catch (e, s) {
+      getIt<Talker>().error('[e2ee:dehydrated] setup упал', e, s);
+    }
   }
 
   @override
@@ -171,6 +189,33 @@ class EncryptionRepositoryImpl(final Client _client)
           onlineKeyBackupOnly: false,
         );
       }
+    }
+  }
+
+  @override
+  Future<bool> isDehydratedDevicesEnabled() async {
+    return ClientFactory.experimentalDehydratedDevicesEnabled();
+  }
+
+  @override
+  Future<void> setDehydratedDevicesEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(
+      ClientFactory.experimentalDehydratedDevicesKey,
+      enabled,
+    );
+    _client.enableDehydratedDevices = enabled;
+    if (!enabled) return;
+    try {
+      final storedKey = await readSecureKey();
+      if (storedKey == null || storedKey.isEmpty) return;
+      await _setupDehydratedDevice(storedKey);
+    } catch (e, s) {
+      getIt<Talker>().error(
+        '[e2ee:dehydrated] setup on enable failed',
+        e,
+        s,
+      );
     }
   }
 

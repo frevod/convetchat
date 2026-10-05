@@ -10,6 +10,8 @@ import 'package:convetchat/features/encryption/domain/repositories/encryption_re
 import 'package:convetchat/features/encryption/ui/pages/backup_page.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_cubit.dart';
 import 'package:convetchat/features/settings/ui/pages/appearance_page.dart';
+import 'package:convetchat/features/settings/ui/pages/chat_settings_page.dart';
+import 'package:convetchat/features/settings/ui/pages/experimental_page.dart';
 import 'package:convetchat/features/settings/ui/pages/feedback_page.dart';
 import 'package:convetchat/features/settings/ui/pages/notifications_page.dart';
 import 'package:convetchat/features/settings/ui/pages/profile_page.dart';
@@ -132,12 +134,20 @@ GoRouter createRouter() {
         builder: (context, state) => const AppearancePage(),
       ),
       GoRoute(
+        path: '/settings/chat',
+        builder: (context, state) => const ChatSettingsPage(),
+      ),
+      GoRoute(
         path: '/settings/notifications',
         builder: (context, state) => const NotificationsPage(),
       ),
       GoRoute(
         path: '/settings/security',
         builder: (context, state) => const SecurityPage(),
+      ),
+      GoRoute(
+        path: '/settings/experimental',
+        builder: (context, state) => const ExperimentalPage(),
       ),
       GoRoute(
         path: '/settings/profile',

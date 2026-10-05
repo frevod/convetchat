@@ -1,10 +1,16 @@
 import 'dart:async';
 
+import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
 import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/core/security/app_lock_service.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
+import 'package:convetchat/features/settings/domain/repositories/security_repository.dart';
+import 'package:convetchat/features/settings/ui/widgets/app_lock_pin_sheet.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:talker_flutter/talker_flutter.dart';
+
+enum _ShareKeysMode() { all, crossVerified, verified }
 
 class const SecurityPageCup({super.key}) extends StatefulWidget {
   @override
@@ -13,11 +19,20 @@ class const SecurityPageCup({super.key}) extends StatefulWidget {
 
 class _SecurityPageCupState() extends State<SecurityPageCup> {
   bool? _backupReady;
+  bool _appLockEnabled = false;
+  bool _biometricsEnabled = false;
+  bool _biometricsAvailable = false;
+  bool _lockLoading = true;
+  _ShareKeysMode _shareMode = _ShareKeysMode.all;
+  bool _shareOnlineOnly = false;
+
+  SecurityRepository get _security => getIt<SecurityRepository>();
 
   @override
   void initState() {
     super.initState();
     _checkBackup();
+    _loadLock();
   }
 
   Future<void> _checkBackup() async {
@@ -29,6 +44,25 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
       });
     } catch (e, s) {
       getIt<Talker>().error('Не удалось проверить состояние крипты', e, s);
+    }
+  }
+
+  Future<void> _loadLock() async {
+    try {
+      final enabled = await _security.isAppLockEnabled();
+      final biometric = await _security.isBiometricsEnabled();
+      final available = await _security.canCheckBiometrics();
+      if (!mounted) return;
+      setState(() {
+        _appLockEnabled = enabled;
+        _biometricsEnabled = biometric && enabled;
+        _biometricsAvailable = available;
+        _lockLoading = false;
+      });
+    } catch (e, s) {
+      getIt<Talker>().error('[security] Не удалось прочитать блокировку', e, s);
+      if (!mounted) return;
+      setState(() => _lockLoading = false);
     }
   }
 
@@ -63,6 +97,107 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
     }
   }
 
+  Future<void> _setAppLock(bool value) async {
+    if (value) {
+      final hasPin = await _security.hasPin();
+      if (!mounted) return;
+      if (!hasPin) {
+        final created = await AppLockPinSheet.showSetup(context);
+        if (!mounted || !created) return;
+      } else {
+        await _security.setAppLockEnabled(true);
+      }
+      setState(() => _appLockEnabled = true);
+      await getIt<AppLockService>().refresh();
+      return;
+    }
+    final ok = await _confirmOwnership();
+    if (!ok || !mounted) return;
+    await _security.setAppLockEnabled(false);
+    await _security.clearPin();
+    await getIt<AppLockService>().refresh();
+    if (!mounted) return;
+    setState(() {
+      _appLockEnabled = false;
+      _biometricsEnabled = false;
+    });
+    AdaptiveSnackbar.show(
+      context: context,
+      message: 'Блокировка выключена, код удалён',
+      type: .info,
+    );
+  }
+
+  Future<bool> _confirmOwnership() async {
+    if (_biometricsEnabled && _biometricsAvailable) {
+      final ok = await _security.authenticate(
+        reason: 'Подтвердите, чтобы изменить блокировку',
+      );
+      if (ok) return true;
+      if (!mounted) return false;
+    }
+    if (!mounted) return false;
+    return AppLockPinSheet.showVerify(context);
+  }
+
+  Future<void> _setBiometrics(bool value) async {
+    if (value) {
+      final available = await _security.canCheckBiometrics();
+      if (!mounted) return;
+      if (!available) {
+        AdaptiveSnackbar.show(
+          context: context,
+          message: 'Биометрия недоступна на этом устройстве',
+          type: .warning,
+        );
+        return;
+      }
+      final ok = await _security.authenticate(
+        reason: 'Включите вход по биометрии',
+      );
+      if (!mounted) return;
+      if (!ok) {
+        AdaptiveSnackbar.show(
+          context: context,
+          message: 'Не удалось подтвердить биометрию',
+          type: .error,
+        );
+        return;
+      }
+      await _security.setBiometricsEnabled(true);
+      if (!mounted) return;
+      setState(() => _biometricsEnabled = true);
+      return;
+    }
+    await _security.setBiometricsEnabled(false);
+    if (!mounted) return;
+    setState(() => _biometricsEnabled = false);
+  }
+
+  Future<void> _onChangePin() async {
+    final changed = await AppLockPinSheet.showChange(context);
+    if (!mounted || !changed) return;
+    AdaptiveSnackbar.show(
+      context: context,
+      message: 'Код-пароль обновлён',
+      type: .success,
+    );
+  }
+
+  CupertinoListTile _shareModeTile(
+    String title,
+    _ShareKeysMode mode,
+    IconData icon,
+  ) {
+    final selected = _shareMode == mode;
+    return CupertinoListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      trailing: selected ? const Icon(CupertinoIcons.check_mark) : null,
+      onTap: () => setState(() => _shareMode = mode),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final backupReady = _backupReady;
@@ -90,6 +225,84 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
                       onChanged: (bool v) {
                         unawaited(_onBackupToggle(v));
                       },
+                    ),
+                    onTap: () => unawaited(_onBackupToggle(!backupReady)),
+                  ),
+              ],
+            ),
+            CupertinoListSection.insetGrouped(
+              backgroundColor: CupertinoColors.transparent,
+              children: [
+                CupertinoListTile(
+                  leading: const Icon(CupertinoIcons.lock_fill),
+                  title: const Text('Блокировка приложения'),
+                  subtitle: _lockLoading
+                      ? const Text('Загрузка…')
+                      : _appLockEnabled
+                          ? const Text('Код-пароль включён')
+                          : null,
+                  trailing: _lockLoading
+                      ? const CupertinoActivityIndicator()
+                      : CupertinoSwitch(
+                          value: _appLockEnabled,
+                          onChanged: _setAppLock,
+                        ),
+                  onTap: _lockLoading
+                      ? null
+                      : () => _setAppLock(!_appLockEnabled),
+                ),
+                if (_appLockEnabled)
+                  CupertinoListTile(
+                    leading: const Icon(CupertinoIcons.number),
+                    title: const Text('Код-пароль'),
+                    subtitle: const Text('Изменить код из 4 цифр'),
+                    trailing: const Icon(CupertinoIcons.chevron_right),
+                    onTap: _onChangePin,
+                  ),
+                if (_appLockEnabled && _biometricsAvailable)
+                  CupertinoListTile(
+                    leading: const Icon(CupertinoIcons.viewfinder),
+                    title: const Text('Использовать биометрию'),
+                    trailing: CupertinoSwitch(
+                      value: _biometricsEnabled,
+                      onChanged: (v) => unawaited(_setBiometrics(v)),
+                    ),
+                    onTap: () => unawaited(
+                      _setBiometrics(!_biometricsEnabled),
+                    ),
+                  ),
+              ],
+            ),
+            CupertinoListSection.insetGrouped(
+              backgroundColor: CupertinoColors.transparent,
+              header: const Text('Делиться ключами'),
+              children: [
+                _shareModeTile(
+                  'Все устройства',
+                  _ShareKeysMode.all,
+                  CupertinoIcons.device_phone_portrait,
+                ),
+                _shareModeTile(
+                  'Кросс-верифицированные устройства',
+                  _ShareKeysMode.crossVerified,
+                  CupertinoIcons.checkmark_shield_fill,
+                ),
+                _shareModeTile(
+                  'Только проверенные устройства',
+                  _ShareKeysMode.verified,
+                  CupertinoIcons.shield_fill,
+                ),
+                if (_shareMode == _ShareKeysMode.crossVerified)
+                  CupertinoListTile(
+                    leading: const Icon(CupertinoIcons.cloud_fill),
+                    title: const Text('Если онлайн'),
+                    trailing: CupertinoSwitch(
+                      value: _shareOnlineOnly,
+                      onChanged: (v) =>
+                          setState(() => _shareOnlineOnly = v),
+                    ),
+                    onTap: () => setState(
+                      () => _shareOnlineOnly = !_shareOnlineOnly,
                     ),
                   ),
               ],

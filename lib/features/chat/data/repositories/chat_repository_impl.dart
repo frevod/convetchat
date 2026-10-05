@@ -6,6 +6,7 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/event_label.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
 import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
+import 'package:convetchat/core/utils/emoji.dart';
 import 'package:convetchat/core/utils/safe_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_send_restriction.dart';
@@ -13,16 +14,89 @@ import 'package:convetchat/features/chat/domain/entities/media_attachment.dart';
 import 'package:convetchat/features/chat/domain/entities/room_info.dart';
 import 'package:convetchat/features/chat/domain/entities/voice_message.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
+import 'package:html_unescape/html_unescape.dart';
+import 'package:markdown/markdown.dart';
 import 'package:matrix/encryption.dart';
 import 'package:matrix/matrix.dart';
 import 'package:path/path.dart' as path_lib;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 class ChatRepositoryImpl(final Client _client) implements ChatRepository {
+  static const _markdownKey = 'chat_markdown_enabled';
+  static const _bigEmojisKey = 'chat_big_emojis_enabled';
+  static const _hideDeletedKey = 'chat_hide_deleted_enabled';
+  static const _hideUnknownFormatsKey = 'chat_hide_unknown_formats_enabled';
+  static const _hideUndecryptableKey = 'chat_hide_undecryptable_enabled';
+  static const _autoplayKey = 'chat_autoplay_enabled';
+  static const _voiceAutoplayKey = 'chat_voice_autoplay_enabled';
+  static const _videoAutoplayKey = 'chat_video_autoplay_enabled';
+  static const _sendOnEnterKey = 'chat_send_on_enter_enabled';
+  static const _swipeToReplyKey = 'chat_swipe_to_reply_enabled';
+  static const _quickReactionKey = 'chat_quick_reaction_enabled';
+  static const _quickReactionEmojiKey = 'chat_quick_reaction_emoji';
+
+  static const defaultQuickReactionEmoji = '❤️';
+
+  bool? _markdownCache;
+  bool? _bigEmojisCache;
+  bool? _hideDeletedCache;
+  bool? _hideUnknownFormatsCache;
+  bool? _hideUndecryptableCache;
+  bool? _autoplayCache;
+  bool? _voiceAutoplayCache;
+  bool? _videoAutoplayCache;
+  bool? _sendOnEnterCache;
+  bool? _swipeToReplyCache;
+  bool? _quickReactionCache;
+  String? _quickReactionEmojiCache;
+
   final Map<String, Timeline> _timelines = {};
 
+  final Map<String, Set<String>> _hiddenCache = {};
+
+  static const _hiddenCap = 500;
+
   Room? _room(String roomId) => _client.getRoomById(roomId);
+
+  static String _hiddenKey(String roomId) => 'chat_hidden_events_$roomId';
+
+  Future<Set<String>> _hiddenIds(String roomId) async {
+    final cached = _hiddenCache[roomId];
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getStringList(_hiddenKey(roomId)) ?? const [];
+      final ids = stored.toSet();
+      _hiddenCache[roomId] = ids;
+      return ids;
+    } catch (_) {
+      const ids = <String>{};
+      _hiddenCache[roomId] = ids;
+      return ids;
+    }
+  }
+
+  @override
+  Future<void> hideEvent({
+    required String roomId,
+    required String eventId,
+  }) async {
+    final ids = await _hiddenIds(roomId);
+    if (ids.contains(eventId)) return;
+    ids.add(eventId);
+    while (ids.length > _hiddenCap) {
+      ids.remove(ids.first);
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_hiddenKey(roomId), ids.toList());
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось скрыть событие', e, s);
+      rethrow;
+    }
+  }
 
   @override
   String roomName(String roomId) =>
@@ -242,6 +316,12 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       unawaited(_prefetchHistory(timeline));
 
       _requestKeysIfNeeded(roomId, timeline);
+      await _hiddenIds(roomId);
+      await isMarkdownEnabled();
+      await isBigEmojisEnabled();
+      await isHideDeletedEnabled();
+      await isHideUnknownFormatsEnabled();
+      await isHideUndecryptableEnabled();
       yield _snapshot(room, timeline);
       await for (final _ in updates.stream) {
         if (_hasUndecrypted(timeline)) {
@@ -281,6 +361,285 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   }
 
   @override
+  Future<bool> isMarkdownEnabled() async {
+    final cached = _markdownCache;
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool(_markdownKey) ?? true;
+      _markdownCache = enabled;
+      return enabled;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> setMarkdownEnabled(bool enabled) async {
+    _markdownCache = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_markdownKey, enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить markdown', e, s);
+    }
+  }
+
+  @override
+  Future<bool> isBigEmojisEnabled() async {
+    final cached = _bigEmojisCache;
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool(_bigEmojisKey) ?? true;
+      _bigEmojisCache = enabled;
+      return enabled;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  @override
+  Future<void> setBigEmojisEnabled(bool enabled) async {
+    _bigEmojisCache = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_bigEmojisKey, enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить эмодзи', e, s);
+    }
+  }
+
+  @override
+  Future<bool> isHideDeletedEnabled() async {
+    final cached = _hideDeletedCache;
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool(_hideDeletedKey) ?? false;
+      _hideDeletedCache = enabled;
+      return enabled;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> setHideDeletedEnabled(bool enabled) async {
+    _hideDeletedCache = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_hideDeletedKey, enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить скрытие', e, s);
+    }
+  }
+
+  @override
+  Future<bool> isHideUnknownFormatsEnabled() async {
+    final cached = _hideUnknownFormatsCache;
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool(_hideUnknownFormatsKey) ?? false;
+      _hideUnknownFormatsCache = enabled;
+      return enabled;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> setHideUnknownFormatsEnabled(bool enabled) async {
+    _hideUnknownFormatsCache = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_hideUnknownFormatsKey, enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить скрытие', e, s);
+    }
+  }
+
+  @override
+  Future<bool> isHideUndecryptableEnabled() async {
+    final cached = _hideUndecryptableCache;
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool(_hideUndecryptableKey) ?? false;
+      _hideUndecryptableCache = enabled;
+      return enabled;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> setHideUndecryptableEnabled(bool enabled) async {
+    _hideUndecryptableCache = enabled;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_hideUndecryptableKey, enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить скрытие', e, s);
+    }
+  }
+
+  Future<bool> _flag(
+    bool? cached,
+    String key,
+    bool fallback,
+    void Function(bool) store,
+  ) async {
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final enabled = prefs.getBool(key) ?? fallback;
+      store(enabled);
+      return enabled;
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  Future<void> _setFlag(String key, bool enabled) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(key, enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить настройку', e, s);
+    }
+  }
+
+  @override
+  Future<bool> isAutoplayEnabled() =>
+      _flag(_autoplayCache, _autoplayKey, true, (v) => _autoplayCache = v);
+
+  @override
+  Future<void> setAutoplayEnabled(bool enabled) async {
+    _autoplayCache = enabled;
+    await _setFlag(_autoplayKey, enabled);
+  }
+
+  @override
+  Future<bool> isVoiceAutoplayEnabled() => _flag(
+    _voiceAutoplayCache,
+    _voiceAutoplayKey,
+    true,
+    (v) => _voiceAutoplayCache = v,
+  );
+
+  @override
+  Future<void> setVoiceAutoplayEnabled(bool enabled) async {
+    _voiceAutoplayCache = enabled;
+    await _setFlag(_voiceAutoplayKey, enabled);
+  }
+
+  @override
+  Future<bool> isVideoAutoplayEnabled() => _flag(
+    _videoAutoplayCache,
+    _videoAutoplayKey,
+    true,
+    (v) => _videoAutoplayCache = v,
+  );
+
+  @override
+  Future<void> setVideoAutoplayEnabled(bool enabled) async {
+    _videoAutoplayCache = enabled;
+    await _setFlag(_videoAutoplayKey, enabled);
+  }
+
+  @override
+  Future<bool> isSendOnEnterEnabled() => _flag(
+    _sendOnEnterCache,
+    _sendOnEnterKey,
+    false,
+    (v) => _sendOnEnterCache = v,
+  );
+
+  @override
+  Future<void> setSendOnEnterEnabled(bool enabled) async {
+    _sendOnEnterCache = enabled;
+    await _setFlag(_sendOnEnterKey, enabled);
+  }
+
+  @override
+  Future<bool> isSwipeToReplyEnabled() => _flag(
+    _swipeToReplyCache,
+    _swipeToReplyKey,
+    true,
+    (v) => _swipeToReplyCache = v,
+  );
+
+  @override
+  Future<void> setSwipeToReplyEnabled(bool enabled) async {
+    _swipeToReplyCache = enabled;
+    await _setFlag(_swipeToReplyKey, enabled);
+  }
+
+  @override
+  Future<bool> isQuickReactionEnabled() => _flag(
+    _quickReactionCache,
+    _quickReactionKey,
+    true,
+    (v) => _quickReactionCache = v,
+  );
+
+  @override
+  Future<void> setQuickReactionEnabled(bool enabled) async {
+    _quickReactionCache = enabled;
+    await _setFlag(_quickReactionKey, enabled);
+  }
+
+  @override
+  Future<String> getQuickReactionEmoji() async {
+    final cached = _quickReactionEmojiCache;
+    if (cached != null && cached.isNotEmpty) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_quickReactionEmojiKey);
+      final emoji = (stored == null || stored.isEmpty)
+          ? defaultQuickReactionEmoji
+          : stored;
+      _quickReactionEmojiCache = emoji;
+      return emoji;
+    } catch (_) {
+      return defaultQuickReactionEmoji;
+    }
+  }
+
+  @override
+  Future<void> setQuickReactionEmoji(String emoji) async {
+    final value = emoji.isEmpty ? defaultQuickReactionEmoji : emoji;
+    _quickReactionEmojiCache = value;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_quickReactionEmojiKey, value);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить реакцию', e, s);
+    }
+  }
+
+  static Map<String, Object?> _formattedCaption(String caption) {
+    final content = <String, Object?>{'body': caption};
+    final html = markdownToHtml(
+      caption.replaceAllMapped(
+        RegExp(r'<([^>]*)>'),
+        (match) => '&lt;${match.group(1)}&gt;',
+      ),
+      extensionSet: ExtensionSet.gitHubFlavored,
+    );
+    if (HtmlUnescape().convert(
+          html.replaceAll(RegExp(r'<br />\n?'), '\n'),
+        ) !=
+        caption) {
+      content['format'] = 'org.matrix.custom.html';
+      content['formatted_body'] = html;
+    }
+    return content;
+  }
+
+  @override
   Future<void> sendText({
     required String roomId,
     required String text,
@@ -291,6 +650,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     await room.sendTextEvent(
       text,
       inReplyTo: _replyTarget(roomId, inReplyToEventId),
+      parseMarkdown: await isMarkdownEnabled(),
     );
   }
 
@@ -302,7 +662,12 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   }) async {
     final room = _room(roomId);
     if (room == null) throw Exception('Комната не найдена');
-    await room.sendTextEvent(text, editEventId: eventId, parseCommands: false);
+    await room.sendTextEvent(
+      text,
+      editEventId: eventId,
+      parseCommands: false,
+      parseMarkdown: await isMarkdownEnabled(),
+    );
   }
 
   Event? _replyTarget(String roomId, String? inReplyToEventId) {
@@ -407,7 +772,13 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     if (isVideo && isCircle) {
       extraContent['com.convetchat.circle_video'] = {'duration': durationMs};
     }
-    if (caption != null) extraContent['body'] = caption;
+    if (caption != null) {
+      if (await isMarkdownEnabled()) {
+        extraContent.addAll(_formattedCaption(caption));
+      } else {
+        extraContent['body'] = caption;
+      }
+    }
     await room.sendFileEvent(
       file,
       thumbnail: thumbnail,
@@ -514,6 +885,20 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     return devices.startVerification();
   }
 
+  static bool _isUnknownFormat(Event event) {
+    if (isStateEvent(event) || event.redacted) return false;
+    if (event.messageType == MessageTypes.BadEncrypted) return false;
+    return switch (event.messageType) {
+      MessageTypes.Text ||
+      MessageTypes.Emote ||
+      MessageTypes.Notice ||
+      MessageTypes.Image ||
+      MessageTypes.Video ||
+      MessageTypes.Audio => false,
+      _ => true,
+    };
+  }
+
   List<ChatMessage> _snapshot(Room room, Timeline timeline) {
     final ownId = _client.userID;
     final showSender = !room.isDirectChat;
@@ -521,7 +906,22 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     for (final event in timeline.events) {
       byId[event.eventId] = event.getDisplayEvent(timeline);
     }
-    return timeline.events.where(isChatVisible).map((event) {
+    final hidden = _hiddenCache[room.id] ?? const <String>{};
+    return timeline.events
+        .where(isChatVisible)
+        .where((event) => !hidden.contains(event.eventId))
+        .where(
+          (event) => _hideDeletedCache != true || !event.redacted,
+        )
+        .where(
+          (event) => _hideUnknownFormatsCache != true || !_isUnknownFormat(event),
+        )
+        .where(
+          (event) =>
+              _hideUndecryptableCache != true ||
+              event.messageType != MessageTypes.BadEncrypted,
+        )
+        .map((event) {
       final state = isStateEvent(event);
       final isOwn = !state && event.senderId == ownId;
       final replyToEventId = state
@@ -529,6 +929,21 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
           : event.inReplyToEventId(includingFallback: false);
       final replyEvent = replyToEventId == null ? null : byId[replyToEventId];
       final display = event.getDisplayEvent(timeline);
+      final plainBody = _body(room, event, display);
+      final bodyHtml = _markdownCache == true
+          ? _formattedBody(display.content)
+          : null;
+      final voice = state ? null : _voice(event);
+      final media = state ? null : _media(event);
+      final bigEmojiSize =
+          !state &&
+              !event.redacted &&
+              bodyHtml == null &&
+              voice == null &&
+              media == null &&
+              _bigEmojisCache == true
+          ? bigEmojiFontSize(emojiOnlyCount(plainBody))
+          : null;
       return ChatMessage(
         id: event.eventId,
         txId: event.transactionId,
@@ -539,7 +954,9 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
             .avatarUrl
             ?.toString(),
         showSender: showSender,
-        body: _body(room, event, display),
+        body: plainBody,
+        bodyHtml: bodyHtml,
+        bigEmojiSize: bigEmojiSize,
         time: event.originServerTs,
         isOwn: isOwn,
         status: state ? null : _status(event, room, isOwn: isOwn),
@@ -548,8 +965,8 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
             ? null
             : _senderName(room, replyEvent.senderId),
         replyBody: replyEvent == null ? null : eventLabel(replyEvent),
-        voice: state ? null : _voice(event),
-        media: state ? null : _media(event),
+        voice: voice,
+        media: media,
         isState: state,
         isDeleted: event.redacted,
         isEdited: !state && display.eventId != event.eventId,
@@ -590,6 +1007,13 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     } catch (_) {
       return const [];
     }
+  }
+
+  static String? _formattedBody(Map<String, Object?> content) {
+    if (content['format'] != 'org.matrix.custom.html') return null;
+    final html = content.tryGet<String>('formatted_body');
+    if (html == null || html.trim().isEmpty) return null;
+    return html;
   }
 
   static String _body(Room room, Event event, Event display) {
@@ -643,7 +1067,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     );
   }
 
-  static MediaAttachment? _media(Event event) {
+  MediaAttachment? _media(Event event) {
     final type = event.messageType;
     final isImage = type == MessageTypes.Image;
     final isVideo = type == MessageTypes.Video;
@@ -676,6 +1100,9 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       size: info?.tryGet<int>('size'),
       fileName: filename ?? event.content.tryGet<String>('body'),
       caption: caption,
+      captionHtml: caption == null || _markdownCache != true
+          ? null
+          : _formattedBody(event.content),
       isCircle:
           isVideo && event.content.containsKey('com.convetchat.circle_video'),
       hasThumb:
@@ -916,6 +1343,9 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     if (text.isEmpty) {
       throw Exception('Пересылать можно только текстовые сообщения');
     }
-    await target.sendTextEvent(text);
+    await target.sendTextEvent(
+      text,
+      parseMarkdown: await isMarkdownEnabled(),
+    );
   }
 }

@@ -4,8 +4,10 @@ import 'package:convetchat/app/adaptive/adaptive_buttons.dart';
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
 import 'package:convetchat/app/adaptive/adaptive_text_field.dart';
+import 'package:convetchat/core/platform_info.dart';
 import 'package:convetchat/features/chats/ui/cubit/create_group_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:system_asset_picker/system_asset_picker.dart';
@@ -14,6 +16,16 @@ class const CreateGroupPageAndr({super.key}) extends StatelessWidget {
   Future<void> _pickAvatar(BuildContext context) async {
     final cubit = context.read<CreateGroupCubit>();
     try {
+      if (PlatformInfos.isLinux) {
+        final picked = await ImagePicker().pickImage(
+          source: ImageSource.gallery,
+        );
+        if (!context.mounted || picked == null) return;
+        final bytes = await picked.readAsBytes();
+        if (!context.mounted) return;
+        cubit.setAvatar(picked.path, bytes);
+        return;
+      }
       final file = await SystemAssetPicker.pickImage();
       if (!context.mounted || file == null) return;
       final bytes = await file.readAsBytes();

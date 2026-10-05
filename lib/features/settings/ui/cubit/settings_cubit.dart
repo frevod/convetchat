@@ -22,6 +22,7 @@ class SettingsCubit(
     _loadProfile();
     _checkBackup();
     _restoreNotificationSettings();
+    _restoreExperimentalFlags();
   }
 
   void _restoreTelemetryConsent() {
@@ -198,6 +199,34 @@ class SettingsCubit(
     } catch (e, s) {
       getIt<Talker>().error('[settings] Ошибка переключения уведомлений', e, s);
       _syncNotificationsFromPushRules();
+    }
+  }
+
+  Future<void> _restoreExperimentalFlags() async {
+    try {
+      final enabled = await _encryptionRepository
+          .isDehydratedDevicesEnabled();
+      if (isClosed) return;
+      emit(state.copyWith(dehydratedDevicesEnabled: () => enabled));
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] Не удалось прочитать флаги', e, s);
+    }
+  }
+
+  Future<void> setDehydratedDevicesEnabled(bool enabled) async {
+    if (isClosed) return;
+    emit(state.copyWith(dehydratedDevicesEnabled: () => enabled));
+    try {
+      await _encryptionRepository.setDehydratedDevicesEnabled(enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] Ошибка переключения флага', e, s);
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          dehydratedDevicesEnabled: () => !enabled,
+          errorMessage: () => 'Не удалось применить настройку',
+        ),
+      );
     }
   }
 
