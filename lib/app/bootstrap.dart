@@ -4,6 +4,7 @@ import 'package:convetchat/app/app.dart';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/firebase/telemetry_service.dart';
 import 'package:convetchat/core/logging/talker_file_sink.dart';
+import 'package:convetchat/core/platform_info.dart';
 import 'package:convetchat/core/push/push_notification_handler.dart';
 import 'package:convetchat/core/push/push_service.dart';
 import 'package:convetchat/firebase_options.dart';
@@ -40,7 +41,13 @@ Future<void> bootstrap() async {
 
       await TalkerFileSink.init();
 
-      JustAudioMediaKit.ensureInitialized();
+      if (PlatformInfos.isDesktop) {
+        try {
+          JustAudioMediaKit.ensureInitialized();
+        } catch (e) {
+          getIt<Talker>().error('[bootstrap] MediaKit недоступен', e);
+        }
+      }
 
       runApp(const ConvetChatApp());
 
@@ -91,6 +98,7 @@ Future<void> bootstrap() async {
 }
 
 Future<void> _initFirebase() async {
+  if (!PlatformInfos.supportsFirebase) return;
   if (Firebase.apps.isNotEmpty) {
     return;
   }

@@ -2,15 +2,19 @@ import 'dart:async';
 
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/core/platform_info.dart';
 import 'package:convetchat/core/utils/message_format.dart';
+import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/domain/services/circle_playback_coordinator.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
-import 'package:convetchat/features/chat/ui/widgets/video_player_page_andr.dart';
+import 'package:convetchat/features/chat/ui/widgets/video_player_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 import 'package:video_player/video_player.dart';
 
@@ -52,6 +56,9 @@ class const _CircleTile({
 class _CircleTileState() extends State<_CircleTile> {
   Future<Uint8List>? _thumb;
   VideoPlayerController? _video;
+  Player? _mkPlayer;
+  VideoController? _mkController;
+  StreamSubscription<bool>? _mkCompleted;
   bool _playing = false;
   bool _busy = false;
 
@@ -62,6 +69,12 @@ class _CircleTileState() extends State<_CircleTile> {
       _thumb = _loadThumb();
     }
     getIt<CirclePlaybackCoordinator>().addListener(_onCoordinator);
+    if (getIt<CirclePlaybackCoordinator>()
+        .consumeAutoplay(widget.message.id)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_toggle());
+      });
+    }
   }
 
   @override
@@ -85,17 +98,34 @@ class _CircleTileState() extends State<_CircleTile> {
       ..removeListener(_onCoordinator)
       ..playStopped(widget.message.id);
     _video?.dispose();
+    unawaited(_mkCompleted?.cancel());
+    unawaited(_mkPlayer?.dispose());
     super.dispose();
   }
 
   void _onCoordinator() {
+    final coordinator = getIt<CirclePlaybackCoordinator>();
+    if (coordinator.consumeAutoplay(widget.message.id)) {
+      if (!_playing && mounted) unawaited(_toggle());
+      return;
+    }
     if (!_playing) return;
-    if (getIt<CirclePlaybackCoordinator>().activeId == widget.message.id) {
+    if (coordinator.activeId == widget.message.id) {
       return;
     }
     _playing = false;
     unawaited(_video?.pause());
+    unawaited(_mkPlayer?.pause());
     if (mounted) setState(() {});
+  }
+
+  void _onFinished() {
+    _playing = false;
+    getIt<CirclePlaybackCoordinator>().playStopped(widget.message.id);
+    if (mounted) setState(() {});
+    if (mounted) {
+      unawaited(context.read<ChatCubit>().playNextAfter(widget.message.id));
+    }
   }
 
   void _onVideoProgress() {
@@ -104,11 +134,9 @@ class _CircleTileState() extends State<_CircleTile> {
     final value = controller.value;
     if (!value.isInitialized || value.duration <= Duration.zero) return;
     if (value.position >= value.duration && !value.isPlaying) {
-      _playing = false;
-      getIt<CirclePlaybackCoordinator>().playStopped(widget.message.id);
       unawaited(controller.pause());
       unawaited(controller.seekTo(Duration.zero));
-      if (mounted) setState(() {});
+      _onFinished();
     }
   }
 
@@ -116,6 +144,7 @@ class _CircleTileState() extends State<_CircleTile> {
 
   Future<void> _toggle() async {
     if (widget.previewOnly || _sending || _busy) return;
+    if (PlatformInfos.isLinux) return _toggleLinux();
     if (_playing) {
       _playing = false;
       getIt<CirclePlaybackCoordinator>().playStopped(widget.message.id);
@@ -158,10 +187,62 @@ class _CircleTileState() extends State<_CircleTile> {
     if (mounted) setState(() => _playing = true);
   }
 
+  Future<void> _toggleLinux() async {
+    if (_playing) {
+      _playing = false;
+      getIt<CirclePlaybackCoordinator>().playStopped(widget.message.id);
+      await _mkPlayer?.pause();
+      if (mounted) setState(() {});
+      return;
+    }
+    if (_mkController == null) {
+      setState(() => _busy = true);
+      try {
+        final cubit = context.read<ChatCubit>();
+        final file = await cubit.videoFile(
+          eventId: widget.message.id,
+          fileName: widget.message.media?.fileName,
+          mimeType: widget.message.media?.mimeType,
+        );
+        final player = Player();
+        final controller = VideoController(player);
+        if (!mounted) {
+          await player.dispose();
+          return;
+        }
+        _mkPlayer = player;
+        _mkController = controller;
+        await _mkCompleted?.cancel();
+        _mkCompleted = player.stream.completed.listen((completed) {
+          if (!completed) return;
+          unawaited(player.pause());
+          unawaited(player.seek(Duration.zero));
+          _onFinished();
+        });
+        await player.open(Media(file.path));
+      } catch (e, s) {
+        getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      if (mounted) setState(() => _busy = false);
+    }
+    try {
+      await _mkPlayer?.seek(Duration.zero);
+      await _mkPlayer?.play();
+    } catch (e, s) {
+      getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+      return;
+    }
+    getIt<CirclePlaybackCoordinator>().playStarted(widget.message.id);
+    if (mounted) setState(() => _playing = true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final preview = widget.previewOnly;
-    final playing = _playing && _video != null;
+    final playing =
+        _playing && (_video != null || _mkController != null);
     final size = playing ? _CircleTile._expanded : _CircleTile._collapsed;
     return GestureDetector(
       onTap: preview || _sending ? null : _toggle,
@@ -184,7 +265,18 @@ class _CircleTileState() extends State<_CircleTile> {
             fit: .expand,
             children: [
               _ThumbBody(thumb: _thumb),
-              if (playing) _CircleVideoFill(controller: _video!, size: size),
+              if (playing && _video != null)
+                _CircleVideoFill(controller: _video!, size: size)
+              else if (playing && _mkController != null)
+                SizedBox(
+                  width: size,
+                  height: size,
+                  child: Video(
+                    controller: _mkController!,
+                    fit: BoxFit.cover,
+                    controls: NoVideoControls,
+                  ),
+                ),
               if (_busy || _sending)
                 const Center(
                   child: SizedBox(
@@ -370,7 +462,7 @@ class _VideoTileState() extends State<_VideoTile> {
       mimeType: widget.message.media?.mimeType,
     );
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => VideoPlayerPageAndr(file: file)),
+      MaterialPageRoute<void>(builder: (_) => VideoPlayerPage(file: file)),
     );
   }
 
@@ -444,7 +536,10 @@ class const _MediaFrame({
   Widget build(BuildContext context) {
     final media = message.media!;
     final scheme = Theme.of(context).colorScheme;
-    final maxWidth = MediaQuery.sizeOf(context).width * 0.68;
+    final maxWidth = (MediaQuery.sizeOf(context).width * 0.68).clamp(
+      0.0,
+      480.0,
+    );
     final height = (maxWidth / media.aspect).clamp(80.0, 340.0);
     final caption = media.caption;
     return GestureDetector(
@@ -570,15 +665,25 @@ class const _MediaFrame({
             if (caption != null && caption.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(10, 6, 10, 4),
-                child: Text(
-                  caption,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: message.isOwn
-                        ? scheme.onPrimary
-                        : scheme.onSurfaceVariant,
-                  ),
-                ),
+                child: media.captionHtml != null
+                    ? FormattedText(
+                        html: media.captionHtml!,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: message.isOwn
+                              ? scheme.onPrimary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      )
+                    : FormattedText.plain(
+                        caption,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: message.isOwn
+                              ? scheme.onPrimary
+                              : scheme.onSurfaceVariant,
+                        ),
+                      ),
               ),
           ],
         ),

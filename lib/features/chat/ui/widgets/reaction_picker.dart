@@ -49,15 +49,10 @@ const List<String> kExtraReactions = [
 
 class const ReactionPickerRow({
   super.key,
-  required this.message,
-  required this.onPicked,
-  this.onExpand,
+  required final ChatMessage message,
+  required final ValueChanged<String> onPicked,
+  final VoidCallback? onExpand,
 }) extends StatelessWidget {
-  final ChatMessage message;
-  final ValueChanged<String> onPicked;
-
-  final VoidCallback? onExpand;
-
   @override
   Widget build(BuildContext context) {
     final reactedKeys = {
@@ -102,16 +97,11 @@ class const ReactionPickerRow({
 }
 
 class const _QuickEmoji({
-  required this.emoji,
-  required this.selected,
-  required this.cupertino,
-  required this.onTap,
+  required final String emoji,
+  required final bool selected,
+  required final bool cupertino,
+  required final VoidCallback onTap,
 }) extends StatelessWidget {
-  final String emoji;
-  final bool selected;
-  final bool cupertino;
-  final VoidCallback onTap;
-
   @override
   Widget build(BuildContext context) {
     final selectedBg = cupertino
@@ -212,9 +202,8 @@ Future<String?> showExtraReactionsSheet(BuildContext context) {
   );
 }
 
-class const _EmojiGrid({required this.onPick}) extends StatelessWidget {
-  final ValueChanged<String> onPick;
-
+class const _EmojiGrid({required final ValueChanged<String> onPick})
+    extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCupertino = getIt<PlatformStyle>().isCupertino;

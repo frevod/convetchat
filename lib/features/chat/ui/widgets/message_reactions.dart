@@ -9,12 +9,9 @@ import 'package:material_ui/material_ui.dart' show Material, InkWell;
 
 class const MessageReactions({
   super.key,
-  required this.message,
-  this.indent = 0,
+  required final ChatMessage message,
+  final double indent = 0,
 }) extends StatelessWidget {
-  final ChatMessage message;
-  final double indent;
-
   @override
   Widget build(BuildContext context) {
     if (message.reactions.isEmpty) return const SizedBox.shrink();
@@ -39,11 +36,10 @@ class const MessageReactions({
   }
 }
 
-class const _AndrReactionChip({required this.message, required this.reaction})
-    extends StatelessWidget {
-  final ChatMessage message;
-  final MessageReaction reaction;
-
+class const _AndrReactionChip({
+  required final ChatMessage message,
+  required final MessageReaction reaction,
+}) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -89,11 +85,10 @@ class const _AndrReactionChip({required this.message, required this.reaction})
   }
 }
 
-class const _CupReactionChip({required this.message, required this.reaction})
-    extends StatelessWidget {
-  final ChatMessage message;
-  final MessageReaction reaction;
-
+class const _CupReactionChip({
+  required final ChatMessage message,
+  required final MessageReaction reaction,
+}) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final blue = CupertinoColors.activeBlue.resolveFrom(context);
@@ -134,10 +129,8 @@ class const _CupReactionChip({required this.message, required this.reaction})
   }
 }
 
-class const _ReactionAppear({super.key, required this.child})
+class const _ReactionAppear({super.key, required final Widget child})
     extends StatelessWidget {
-  final Widget child;
-
   @override
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(

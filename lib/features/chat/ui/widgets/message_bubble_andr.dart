@@ -1,4 +1,5 @@
 import 'package:convetchat/core/utils/message_format.dart';
+import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/core/widgets/mxc_avatar.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
@@ -23,6 +24,10 @@ class const MessageBubbleAndr({
   final bool belowSameSender = false,
 
   final bool previewOnly = false,
+
+  /// Включено в режиме выбора сообщений: текст можно выделять
+  /// удержанием, свайп-ответ при этом отключён чтобы не мешать выделению.
+  final bool textSelectable = false,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -97,7 +102,14 @@ class const MessageBubbleAndr({
 
     final placeholderColor = isOwn ? scheme.onSurface : scheme.onSurfaceVariant;
 
-    final bubbleColor = placeholder
+    final bigSize = message.bigEmojiSize;
+    final timeBase = bigSize != null
+        ? scheme.onSurfaceVariant
+        : (isOwn ? scheme.onPrimary : scheme.onSurfaceVariant);
+
+    final bubbleColor = bigSize != null
+        ? const Color(0x00000000)
+        : placeholder
         ? scheme.surfaceContainer
         : highlighted
         ? Color.alphaBlend(const Color(0x40000000), baseColor)
@@ -115,7 +127,7 @@ class const MessageBubbleAndr({
     final bubble = ConstrainedBox(
       key: anchorKey,
       constraints: BoxConstraints(
-        maxWidth: MediaQuery.sizeOf(context).width * 0.75,
+        maxWidth: (MediaQuery.sizeOf(context).width * 0.75).clamp(0.0, 520.0),
       ),
       child: Container(
         margin: EdgeInsets.only(
@@ -152,53 +164,82 @@ class const MessageBubbleAndr({
                   color: scheme.primary,
                 ),
               ),
-            if (!placeholder && message.replyToEventId != null)
-              MessageReplyQuote(
-                senderName: message.replySenderName,
-                body: message.replyBody,
-                isOwn: isOwn,
-                onTap: () => context.read<ChatCubit>().jumpToMessage(
-                  message.replyToEventId!,
-                ),
+            IntrinsicWidth(
+              child: Column(
+                crossAxisAlignment: .stretch,
+                mainAxisSize: .min,
+                children: [
+                  if (!placeholder && message.replyToEventId != null)
+                    MessageReplyQuote(
+                      senderName: message.replySenderName,
+                      body: message.replyBody,
+                      isOwn: isOwn,
+                      onTap: () => context.read<ChatCubit>().jumpToMessage(
+                        message.replyToEventId!,
+                      ),
+                    ),
+                  if (deleted)
+                    MessageDeletedLabel(color: placeholderColor)
+                  else if (undecryptable)
+                    MessageDeletedLabel(
+                      color: placeholderColor,
+                      text: 'Не удалось расшифровать',
+                      icon: Icons.lock_outline,
+                    )
+                  else if (hasMedia)
+                    MediaMessageAndr(message: message, previewOnly: previewOnly)
+                  else if (message.voice != null)
+                    DefaultTextStyle(
+                      style: TextStyle(
+                        color: isOwn
+                            ? scheme.onPrimary
+                            : scheme.onSurfaceVariant,
+                      ),
+                      child: VoicePlayer(
+                        voice: message.voice!,
+                        accent: isOwn ? scheme.onPrimary : scheme.primary,
+                        track: (isOwn ? scheme.onPrimary : scheme.primary)
+                            .withValues(alpha: 0.3),
+                        playIcon: Icons.play_arrow_rounded,
+                        pauseIcon: Icons.pause_rounded,
+                        iconColor: isOwn
+                            ? scheme.primary
+                            : scheme.primaryContainer,
+                        buttonColor: isOwn
+                            ? scheme.primaryContainer
+                            : scheme.primary,
+                        loadingColor: isOwn
+                            ? scheme.primary
+                            : scheme.primaryContainer,
+                      ),
+                    )
+                  else if (bigSize != null)
+                    Text(message.body, style: TextStyle(fontSize: bigSize))
+                  else if (message.bodyHtml != null)
+                    FormattedText(
+                      html: message.bodyHtml!,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: isOwn
+                            ? scheme.onPrimary
+                            : scheme.onSurfaceVariant,
+                      ),
+                      selectable: textSelectable,
+                    )
+                  else
+                    FormattedText.plain(
+                      message.body,
+                      style: TextStyle(
+                        fontSize: 15,
+                        color: isOwn
+                            ? scheme.onPrimary
+                            : scheme.onSurfaceVariant,
+                      ),
+                      selectable: textSelectable,
+                    ),
+                ],
               ),
-            if (deleted)
-              MessageDeletedLabel(color: placeholderColor)
-            else if (undecryptable)
-              MessageDeletedLabel(
-                color: placeholderColor,
-                text: 'Не удалось расшифровать',
-                icon: Icons.lock_outline,
-              )
-            else if (hasMedia)
-              MediaMessageAndr(message: message, previewOnly: previewOnly)
-            else if (message.voice != null)
-              DefaultTextStyle(
-                style: TextStyle(
-                  color: isOwn ? scheme.onPrimary : scheme.onSurfaceVariant,
-                ),
-                child: VoicePlayer(
-                  voice: message.voice!,
-                  accent: isOwn ? scheme.onPrimary : scheme.primary,
-                  track: (isOwn ? scheme.onPrimary : scheme.primary).withValues(
-                    alpha: 0.3,
-                  ),
-                  playIcon: Icons.play_arrow_rounded,
-                  pauseIcon: Icons.pause_rounded,
-                  iconColor: isOwn ? scheme.primary : scheme.primaryContainer,
-                  buttonColor: isOwn ? scheme.primaryContainer : scheme.primary,
-                  loadingColor: isOwn
-                      ? scheme.primary
-                      : scheme.primaryContainer,
-                ),
-              )
-            else
-              Text(
-                message.body,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isOwn ? scheme.onPrimary : scheme.onSurfaceVariant,
-                ),
-              ),
+            ),
             if (!hasMedia) ...[
               const SizedBox(height: 2),
               Row(
@@ -212,10 +253,7 @@ class const MessageBubbleAndr({
                         fontStyle: .italic,
                         color: (deleted || undecryptable)
                             ? placeholderColor
-                            : (isOwn
-                                      ? scheme.onPrimary
-                                      : scheme.onSurfaceVariant)
-                                  .withValues(alpha: 0.7),
+                            : timeBase.withValues(alpha: 0.7),
                       ),
                     ),
                     const SizedBox(width: 4),
@@ -226,8 +264,7 @@ class const MessageBubbleAndr({
                       fontSize: 11,
                       color: (deleted || undecryptable)
                           ? placeholderColor
-                          : (isOwn ? scheme.onPrimary : scheme.onSurfaceVariant)
-                                .withValues(alpha: 0.7),
+                          : timeBase.withValues(alpha: 0.7),
                     ),
                   ),
                   AnimatedSize(
@@ -259,9 +296,7 @@ class const MessageBubbleAndr({
                                 child: Icon(
                                   Icons.close_rounded,
                                   size: 14,
-                                  color: scheme.onPrimary.withValues(
-                                    alpha: 0.7,
-                                  ),
+                                  color: timeBase.withValues(alpha: 0.7),
                                 ),
                               ),
                             ),
@@ -336,8 +371,7 @@ class const MessageBubbleAndr({
       crossAxisAlignment: message.isOwn ? .end : .start,
       children: [
         child,
-        if (hasReactions)
-          MessageReactions(message: message, indent: indent),
+        if (hasReactions) MessageReactions(message: message, indent: indent),
         if (hasSeen)
           SeenByAvatars(
             seenBy: message.seenBy,
@@ -349,7 +383,11 @@ class const MessageBubbleAndr({
   }
 
   Widget _swipeable(BuildContext context, Widget content) {
-    if (previewOnly) return content;
+    if (previewOnly || textSelectable) return content;
+    final swipeEnabled = context.select<ChatCubit, bool>(
+      (cubit) => cubit.state.swipeToReplyEnabled,
+    );
+    if (!swipeEnabled) return content;
     return SwipeToReply(
       onReply: () => context.read<ChatCubit>().setReply(message),
       actionBuilder: (actionContext, progress) =>

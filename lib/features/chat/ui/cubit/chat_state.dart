@@ -49,6 +49,11 @@ class const ChatState({
   final bool forwardPickerOpen = false,
 
   final List<String> pinnedEventIds = const [],
+
+  final bool sendOnEnter = false,
+  final bool swipeToReplyEnabled = true,
+  final bool quickReactionEnabled = true,
+  final String quickReactionEmoji = '❤️',
 }) extends Equatable {
   ChatState copyWith({
     String Function()? roomName,
@@ -80,6 +85,10 @@ class const ChatState({
     List<({String id, String name})> Function()? forwardTargets,
     bool Function()? forwardPickerOpen,
     List<String> Function()? pinnedEventIds,
+    bool Function()? sendOnEnter,
+    bool Function()? swipeToReplyEnabled,
+    bool Function()? quickReactionEnabled,
+    String Function()? quickReactionEmoji,
   }) {
     return ChatState(
       roomName: roomName != null ? roomName() : this.roomName,
@@ -136,6 +145,16 @@ class const ChatState({
       pinnedEventIds: pinnedEventIds != null
           ? pinnedEventIds()
           : this.pinnedEventIds,
+      sendOnEnter: sendOnEnter != null ? sendOnEnter() : this.sendOnEnter,
+      swipeToReplyEnabled: swipeToReplyEnabled != null
+          ? swipeToReplyEnabled()
+          : this.swipeToReplyEnabled,
+      quickReactionEnabled: quickReactionEnabled != null
+          ? quickReactionEnabled()
+          : this.quickReactionEnabled,
+      quickReactionEmoji: quickReactionEmoji != null
+          ? quickReactionEmoji()
+          : this.quickReactionEmoji,
     );
   }
 
@@ -169,5 +188,9 @@ class const ChatState({
     forwardTargets,
     forwardPickerOpen,
     pinnedEventIds,
+    sendOnEnter,
+    swipeToReplyEnabled,
+    quickReactionEnabled,
+    quickReactionEmoji,
   ];
 }

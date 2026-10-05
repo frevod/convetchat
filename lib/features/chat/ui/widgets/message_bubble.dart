@@ -62,6 +62,7 @@ class const MessageBubble({
             anchorKey: anchor,
             aboveSameSender: aboveSameSender,
             belowSameSender: belowSameSender,
+            textSelectable: inSelectionMode && message.isBody,
           )
         : MessageBubbleAndr(
             message: message,
@@ -70,12 +71,14 @@ class const MessageBubble({
             aboveSameSender: aboveSameSender,
             belowSameSender: belowSameSender,
             previewOnly: previewOnly,
+            textSelectable: inSelectionMode && message.isBody,
           );
 
     return _MessageSelection(
       message: message,
       selected: selected,
       inSelectionMode: inSelectionMode,
+      textSelectable: inSelectionMode && message.isBody,
       isCupertino: isCupertino,
       anchorKey: anchorKey,
       child: platformBubble(anchor: anchorKey),
@@ -84,20 +87,17 @@ class const MessageBubble({
 }
 
 class const _MessageSelection({
-  required this.message,
-  required this.selected,
-  required this.inSelectionMode,
-  required this.isCupertino,
-  required this.anchorKey,
-  required this.child,
-}) extends StatefulWidget {
-  final ChatMessage message;
-  final bool selected;
-  final bool inSelectionMode;
-  final bool isCupertino;
-  final GlobalKey? anchorKey;
-  final Widget child;
+  required final ChatMessage message,
+  required final bool selected,
+  required final bool inSelectionMode,
 
+  /// Текстовое сообщение в режиме выбора: удержание и двойной тап
+  /// отданы [SelectableText] для выделения текста, выбор переключается тапом.
+  required final bool textSelectable,
+  required final bool isCupertino,
+  required final GlobalKey? anchorKey,
+  required final Widget child,
+}) extends StatefulWidget {
   @override
   State<_MessageSelection> createState() => _MessageSelectionState();
 }
@@ -179,7 +179,9 @@ class _MessageSelectionState() extends State<_MessageSelection> {
 
     Widget content = GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onLongPress: () => _onLongPress(() => _showCupertinoMenu(context)),
+      onLongPress: widget.textSelectable
+          ? null
+          : () => _onLongPress(() => _showCupertinoMenu(context)),
       onTap: widget.isCupertino
           ? () => _onTap(() => _showCupertinoMenu(context))
           : () {
@@ -187,7 +189,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
                 cubit.toggleSelection(message.id);
               }
             },
-      onDoubleTap: _onDoubleTap,
+      onDoubleTap: widget.textSelectable ? null : _onDoubleTap,
       child: widget.child,
     );
 
@@ -216,8 +218,10 @@ class _MessageSelectionState() extends State<_MessageSelection> {
             ),
           ];
           return SafeArea(
+            top: false,
             child: M3EList.scrollable(
               shrinkWrap: true,
+              listPadding: EdgeInsets.zero,
               itemCount: items.length,
               onTap: (index) => items[index].onTap?.call(),
               itemBuilder: (context, index) => items[index],
@@ -235,6 +239,12 @@ class _MessageSelectionState() extends State<_MessageSelection> {
       builder: (sheetContext) {
         final scheme = Theme.of(sheetContext).colorScheme;
         final actions = [
+          if (!msg.isUndecryptable)
+            M3EListItem(
+              headline: 'Ответить',
+              leading: const Icon(Icons.reply_rounded),
+              onTap: () => Navigator.of(sheetContext).pop('reply'),
+            ),
           if (editable)
             M3EListItem(
               headline: 'Копировать',
@@ -247,7 +257,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
               leading: const Icon(Icons.edit_rounded),
               onTap: () => Navigator.of(sheetContext).pop('edit'),
             ),
-          if (!msg.isState)
+          if (!msg.isState && !msg.isUndecryptable && !msg.isDeleted)
             M3EListItem(
               headline: pinned ? 'Открепить' : 'Закрепить',
               leading: Icon(
@@ -255,19 +265,21 @@ class _MessageSelectionState() extends State<_MessageSelection> {
               ),
               onTap: () => Navigator.of(sheetContext).pop('pin'),
             ),
-          if (!msg.isState)
+          if (!msg.isState && !msg.isUndecryptable && !msg.isDeleted)
             M3EListItem(
               headline: 'Переслать',
               leading: const Icon(Icons.turn_right_rounded),
               onTap: () => Navigator.of(sheetContext).pop('forward'),
             ),
-          M3EListItem(
-            headline: 'Удалить',
-            leading: Icon(Icons.delete_outline_rounded, color: scheme.error),
-            onTap: () => Navigator.of(sheetContext).pop('delete'),
-          ),
+          if (!msg.isDeleted)
+            M3EListItem(
+              headline: 'Удалить',
+              leading: Icon(Icons.delete_outline_rounded, color: scheme.error),
+              onTap: () => Navigator.of(sheetContext).pop('delete'),
+            ),
         ];
         return SafeArea(
+          top: false,
           child: ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.6,
@@ -277,32 +289,39 @@ class _MessageSelectionState() extends State<_MessageSelection> {
               crossAxisAlignment: .stretch,
               children: [
                 if (msg.canReact) ...[
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest,
-                        borderRadius: .circular(24),
-                      ),
-                      child: ReactionPickerRow(
-                        message: msg,
-                        onPicked: (emoji) =>
-                            Navigator.of(sheetContext).pop('react:$emoji'),
-                        onExpand: () => Navigator.of(sheetContext).pop('more'),
+                  Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest,
+                          borderRadius: .circular(24),
+                        ),
+                        child: ReactionPickerRow(
+                          message: msg,
+                          onPicked: (emoji) =>
+                              Navigator.of(sheetContext).pop('react:$emoji'),
+                          onExpand: () =>
+                              Navigator.of(sheetContext).pop('more'),
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
                 ],
                 Flexible(
-                  child: M3EList.scrollable(
-                    shrinkWrap: true,
-                    itemCount: actions.length,
-                    onTap: (index) => actions[index].onTap?.call(),
-                    itemBuilder: (context, index) => actions[index],
+                  child: Padding(
+                    padding: const EdgeInsets.all(8),
+                    child: M3EList.scrollable(
+                      shrinkWrap: true,
+                      listPadding: EdgeInsets.zero,
+                      itemCount: actions.length,
+                      onTap: (index) => actions[index].onTap?.call(),
+                      itemBuilder: (context, index) => actions[index],
+                    ),
                   ),
                 ),
               ],
@@ -327,6 +346,8 @@ class _MessageSelectionState() extends State<_MessageSelection> {
       return;
     }
     switch (action) {
+      case 'reply':
+        cubit.setReply(msg);
       case 'copy':
         unawaited(cubit.copyMessage(msg));
       case 'edit':
@@ -393,6 +414,14 @@ class _MessageSelectionState() extends State<_MessageSelection> {
               )
             : null,
         actions: [
+          if (!msg.isUndecryptable)
+            cup.CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(sheetContext).pop('reply');
+                cubit.setReply(msg);
+              },
+              child: const Text('Ответить'),
+            ),
           if (editable)
             cup.CupertinoActionSheetAction(
               onPressed: () {
@@ -409,7 +438,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
               },
               child: const Text('Изменить'),
             ),
-          if (!msg.isState)
+          if (!msg.isState && !msg.isUndecryptable && !msg.isDeleted)
             cup.CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.of(sheetContext).pop('pin');
@@ -421,7 +450,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
               },
               child: Text(pinned ? 'Открепить' : 'Закрепить'),
             ),
-          if (!msg.isState)
+          if (!msg.isState && !msg.isUndecryptable && !msg.isDeleted)
             cup.CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.of(sheetContext).pop('forward');
@@ -434,14 +463,15 @@ class _MessageSelectionState() extends State<_MessageSelection> {
               },
               child: const Text('Переслать'),
             ),
-          cup.CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () {
-              Navigator.of(sheetContext).pop('delete');
-              unawaited(cubit.deleteMessage(msg));
-            },
-            child: const Text('Удалить'),
-          ),
+          if (!msg.isDeleted)
+            cup.CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () {
+                Navigator.of(sheetContext).pop('delete');
+                unawaited(cubit.deleteMessage(msg));
+              },
+              child: const Text('Удалить'),
+            ),
         ],
         cancelButton: cup.CupertinoActionSheetAction(
           isDefaultAction: true,
@@ -454,16 +484,11 @@ class _MessageSelectionState() extends State<_MessageSelection> {
 }
 
 class const _SelectionHighlight({
-  required this.message,
-  required this.selected,
-  required this.inSelectionMode,
-  required this.child,
+  required final ChatMessage message,
+  required final bool selected,
+  required final bool inSelectionMode,
+  required final Widget child,
 }) extends StatelessWidget {
-  final ChatMessage message;
-  final bool selected;
-  final bool inSelectionMode;
-  final Widget child;
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;

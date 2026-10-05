@@ -87,6 +87,8 @@ abstract class ChatRepository() {
 
   Future<void> redactMessage({required String roomId, required String eventId});
 
+  Future<void> hideEvent({required String roomId, required String eventId});
+
   Stream<List<String>> watchPinnedEvents(String roomId);
 
   Future<void> pinMessage({required String roomId, required String eventId});
@@ -106,4 +108,52 @@ abstract class ChatRepository() {
     required String eventId,
     required String emoji,
   });
+
+  Future<bool> isMarkdownEnabled();
+
+  Future<void> setMarkdownEnabled(bool enabled);
+
+  Future<bool> isBigEmojisEnabled();
+
+  Future<void> setBigEmojisEnabled(bool enabled);
+
+  Future<bool> isHideDeletedEnabled();
+
+  Future<void> setHideDeletedEnabled(bool enabled);
+
+  Future<bool> isHideUnknownFormatsEnabled();
+
+  Future<void> setHideUnknownFormatsEnabled(bool enabled);
+
+  Future<bool> isHideUndecryptableEnabled();
+
+  Future<void> setHideUndecryptableEnabled(bool enabled);
+
+  Future<bool> isAutoplayEnabled();
+
+  Future<void> setAutoplayEnabled(bool enabled);
+
+  Future<bool> isVoiceAutoplayEnabled();
+
+  Future<void> setVoiceAutoplayEnabled(bool enabled);
+
+  Future<bool> isVideoAutoplayEnabled();
+
+  Future<void> setVideoAutoplayEnabled(bool enabled);
+
+  Future<bool> isSendOnEnterEnabled();
+
+  Future<void> setSendOnEnterEnabled(bool enabled);
+
+  Future<bool> isSwipeToReplyEnabled();
+
+  Future<void> setSwipeToReplyEnabled(bool enabled);
+
+  Future<bool> isQuickReactionEnabled();
+
+  Future<void> setQuickReactionEnabled(bool enabled);
+
+  Future<String> getQuickReactionEmoji();
+
+  Future<void> setQuickReactionEmoji(String emoji);
 }

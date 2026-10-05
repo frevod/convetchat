@@ -86,5 +86,7 @@
 	<string>Запись голосовых сообщений в чате</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Разрешите доступ к фотографиям</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Вход в ConvetChat по Face ID вместо код-пароля</string>
 </dict>
 </plist>

@@ -16,6 +16,8 @@ class const MediaAttachment({
 
   final String? caption,
 
+  final String? captionHtml,
+
   final bool isCircle = false,
 
   final bool hasThumb = false,
@@ -37,6 +39,7 @@ class const MediaAttachment({
     size,
     fileName,
     caption,
+    captionHtml,
     isCircle,
     hasThumb,
   ];

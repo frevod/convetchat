@@ -1,17 +1,13 @@
-import 'dart:math';
-
 import 'package:convetchat/core/matrix/client_factory.dart';
 import 'package:convetchat/core/matrix/session_backup.dart';
+import 'package:convetchat/core/platform_info.dart';
 import 'package:convetchat/features/auth/domain/exceptions/sso_cancelled_exception.dart';
 import 'package:convetchat/features/auth/domain/repositories/auth_repository.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:matrix/matrix.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthRepositoryImpl(final Client _client) implements AuthRepository {
-  static const _deviceIdKey = 'convetchat_device_id';
-  static const _deviceIdChars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
   String? _serverName;
 
@@ -37,19 +33,6 @@ class AuthRepositoryImpl(final Client _client) implements AuthRepository {
     }
   }
 
-  Future<String> _stableDeviceId() async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_deviceIdKey);
-    if (stored != null && stored.isNotEmpty) return stored;
-    final random = Random.secure();
-    final deviceId = List.generate(
-      10,
-      (_) => _deviceIdChars[random.nextInt(_deviceIdChars.length)],
-    ).join();
-    await prefs.setString(_deviceIdKey, deviceId);
-    return deviceId;
-  }
-
   @override
   Future<void> logout() async {
     await deleteSessionBackup(ClientFactory.clientName);
@@ -59,16 +42,21 @@ class AuthRepositoryImpl(final Client _client) implements AuthRepository {
 
   static const ssoCallbackScheme = 'convetchat';
 
+  static const _desktopCallbackUrl = 'http://localhost:3001';
+
   @override
   Future<void> loginWithSso() async {
     final homeserver = _client.homeserver;
     if (homeserver == null) {
       throw const SsoCancelledException();
     }
+    final desktop = PlatformInfos.isDesktop;
     final url = homeserver.replace(
       path: '/_matrix/client/v3/login/sso/redirect',
       queryParameters: {
-        'redirectUrl': '$ssoCallbackScheme:/login',
+        'redirectUrl': desktop
+            ? '$_desktopCallbackUrl/login'
+            : '$ssoCallbackScheme:/login',
         'action': 'login',
       },
     );
@@ -76,7 +64,8 @@ class AuthRepositoryImpl(final Client _client) implements AuthRepository {
     try {
       callback = await FlutterWebAuth2.authenticate(
         url: url.toString(),
-        callbackUrlScheme: ssoCallbackScheme,
+        callbackUrlScheme: desktop ? _desktopCallbackUrl : ssoCallbackScheme,
+        options: FlutterWebAuth2Options(useWebview: !desktop),
       );
     } on PlatformException catch (e) {
       if (e.code == 'CANCELED') throw const SsoCancelledException();
@@ -90,7 +79,6 @@ class AuthRepositoryImpl(final Client _client) implements AuthRepository {
     await _client.login(
       LoginType.mLoginToken,
       token: token,
-      deviceId: await _stableDeviceId(),
       initialDeviceDisplayName: 'ConvetChat',
     );
     await storeSessionBackup(_client);

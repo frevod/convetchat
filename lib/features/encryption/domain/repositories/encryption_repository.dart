@@ -23,6 +23,10 @@ abstract class EncryptionRepository() {
 
   Future<void> loadBackupKeys();
 
+  Future<bool> isDehydratedDevicesEnabled();
+
+  Future<void> setDehydratedDevicesEnabled(bool enabled);
+
   Future<String?> readSecureKey();
 
   Future<void> writeSecureKey(String? key);

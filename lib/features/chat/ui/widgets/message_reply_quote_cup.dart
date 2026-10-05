@@ -20,7 +20,6 @@ class const MessageReplyQuoteCup({
       behavior: .opaque,
       onTap: onTap,
       child: Container(
-        width: .infinity,
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(color: quoteBg, borderRadius: .circular(10)),

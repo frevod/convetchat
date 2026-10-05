@@ -27,6 +27,9 @@ import 'package:convetchat/features/chats/ui/cubit/user_search_cubit.dart';
 import 'package:convetchat/features/encryption/data/repositories/encryption_repository_impl.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
 import 'package:convetchat/features/encryption/ui/cubit/encryption_cubit.dart';
+import 'package:convetchat/core/security/app_lock_service.dart';
+import 'package:convetchat/features/settings/data/repositories/security_repository_impl.dart';
+import 'package:convetchat/features/settings/domain/repositories/security_repository.dart';
 import 'package:convetchat/features/settings/ui/cubit/feedback_cubit.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_cubit.dart';
 import 'package:get_it/get_it.dart';
@@ -78,6 +81,10 @@ Future<void> setupLocator() async {
       (reset, _) =>
           EncryptionCubit(getIt<EncryptionRepository>(), reset: reset),
     )
+    ..registerLazySingleton<SecurityRepository>(
+      () => SecurityRepositoryImpl(),
+    )
+    ..registerLazySingleton<AppLockService>(() => AppLockService())
     ..registerFactory<SettingsCubit>(
       () =>
           SettingsCubit(getIt<AuthRepository>(), getIt<EncryptionRepository>()),

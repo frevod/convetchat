@@ -1,7 +1,6 @@
 import 'package:convetchat/app/adaptive/adaptive_buttons.dart';
 import 'package:convetchat/app/adaptive/adaptive_dialog.dart';
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
-import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/core/widgets/mxc_avatar.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_cubit.dart';
@@ -34,7 +33,7 @@ class const SettingsPageAndr({super.key}) extends StatelessWidget {
         onTap: openAccountManagement,
       ),
       M3EListItem(
-        headline: 'Безопасность и конфиденциальность',
+        headline: 'Безопасность',
         leading: const Icon(Icons.shield_rounded),
         onTap: () => context.push('/settings/security'),
       ),
@@ -49,8 +48,7 @@ class const SettingsPageAndr({super.key}) extends StatelessWidget {
       M3EListItem(
         headline: 'Чат',
         leading: const Icon(Icons.message_rounded),
-        onTap: () =>
-            AdaptiveSnackbar.show(context: context, message: 'В разработке...'),
+        onTap: () => context.push('/settings/chat'),
       ),
       M3EListItem(
         headline: 'Уведомления',
@@ -82,6 +80,11 @@ class const SettingsPageAndr({super.key}) extends StatelessWidget {
         headline: 'Логи',
         leading: const Icon(Icons.terminal_rounded),
         onTap: () => context.push('/talker-logs'),
+      ),
+      M3EListItem(
+        headline: 'Экспериментальные',
+        leading: const Icon(Icons.science_rounded),
+        onTap: () => context.push('/settings/experimental'),
       ),
     ];
 

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui';
 
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/push/push_config.dart';
@@ -18,6 +20,8 @@ class PushService(final Client _client, final Talker _talker) {
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
+  ReceivePort? _actionPort;
+
   String? _fcmToken;
 
   String? get fcmToken => _fcmToken;
@@ -26,8 +30,49 @@ class PushService(final Client _client, final Talker _talker) {
 
   Future<void> init() async {
     if (Platform.isAndroid || Platform.isIOS) {
+      _registerActionPort();
       await _initLocalNotifications();
       await _initFirebaseMessaging();
+    }
+  }
+
+  /// Порт для фоновых тапов: если система разбудила фоновый изолят
+  /// при живом приложении, действие выполнит прогретый клиент.
+  void _registerActionPort() {
+    try {
+      IsolateNameServer.removePortNameMapping(pushActionPortName);
+      _actionPort = ReceivePort();
+      IsolateNameServer.registerPortWithName(
+        _actionPort!.sendPort,
+        pushActionPortName,
+      );
+      _actionPort!.listen((message) {
+        if (message is! String) return;
+        final response = deserializeNotificationResponse(message);
+        if (response == null) return;
+        if (!_client.isLogged()) return;
+        try {
+          final actionId = response.actionId;
+          if (actionId == markAsReadActionId ||
+              actionId == replyActionId ||
+              actionId == muteActionId) {
+            final payload = response.payload;
+            if (payload == null) return;
+            final data = jsonDecode(payload) as Map<String, dynamic>;
+            final roomId = data['roomId'] as String?;
+            if (roomId == null) return;
+            unawaited(
+              _handleTapAction(response, roomId, data['eventId'] as String?),
+            );
+            return;
+          }
+          _onNotificationTap(response);
+        } catch (e) {
+          _talker.error('[push] Ошибка форварда фонового тапа', e);
+        }
+      });
+    } catch (e) {
+      _talker.error('[push] Не удалось зарегистрировать порт действий', e);
     }
   }
 
@@ -396,57 +441,46 @@ class PushService(final Client _client, final Talker _talker) {
     String? eventId,
   ) async {
     try {
-      final room =
-          _client.getRoomById(roomId) ?? Room(id: roomId, client: _client);
+      final room = _client.getRoomById(roomId);
       switch (response.actionId) {
         case replyActionId:
           final input = response.input?.trim();
-          if (input != null && input.isNotEmpty) {
-            await room
-                .sendTextEvent(input, parseCommands: false)
-                .timeout(const Duration(seconds: 15));
+          if (input == null || input.isEmpty) break;
+          if (room == null) {
+            _talker.warning('[push] Нет комнаты $roomId, ответ не отправлен');
+            break;
           }
-          if (eventId != null) {
-            await _client
-                .setReadMarker(roomId, mFullyRead: eventId, mReadPrivate: eventId)
-                .timeout(const Duration(seconds: 10));
-          }
+          await room
+              .sendTextEvent(
+                input,
+                parseCommands: false,
+                displayPendingEvent: false,
+              )
+              .timeout(const Duration(seconds: 20));
         case muteActionId:
-          try {
+          if (room != null) {
             await room
-                .setPushRuleState(PushRuleState.dontNotify)
+                .setPushRuleState(PushRuleState.mentionsOnly)
                 .timeout(const Duration(seconds: 10));
-          } catch (_) {
+          } else {
             await _client
-                .setPushRule(
-                  PushRuleKind.override,
-                  roomId,
-                  [],
-                  conditions: [
-                    PushCondition(
-                      kind: PushRuleConditions.eventMatch.name,
-                      key: 'room_id',
-                      pattern: roomId,
-                    ),
-                  ],
-                )
+                .setPushRule(PushRuleKind.room, roomId, [])
                 .timeout(const Duration(seconds: 10));
-          }
-          if (eventId != null) {
-            try {
-              await _client
-                  .setReadMarker(
-                    roomId,
-                    mFullyRead: eventId,
-                    mReadPrivate: eventId,
-                  )
-                  .timeout(const Duration(seconds: 10));
-            } catch (_) {}
           }
         default:
-          if (eventId != null) {
+          final targetEventId = eventId ?? room?.lastEvent?.eventId;
+          if (targetEventId == null) break;
+          if (room != null) {
+            await room
+                .setReadMarker(targetEventId, mRead: targetEventId)
+                .timeout(const Duration(seconds: 10));
+          } else {
             await _client
-                .setReadMarker(roomId, mFullyRead: eventId, mReadPrivate: eventId)
+                .setReadMarker(
+                  roomId,
+                  mFullyRead: targetEventId,
+                  mRead: targetEventId,
+                )
                 .timeout(const Duration(seconds: 10));
           }
       }
@@ -461,5 +495,10 @@ class PushService(final Client _client, final Talker _talker) {
     }
   }
 
-  void dispose() {}
+  void dispose() {
+    try {
+      IsolateNameServer.removePortNameMapping(pushActionPortName);
+    } catch (_) {}
+    _actionPort?.close();
+  }
 }

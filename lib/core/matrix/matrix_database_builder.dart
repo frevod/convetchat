@@ -29,6 +29,8 @@ Future<DatabaseApi> _constructDatabase(String clientName) async {
   final path = await _databasePath(clientName);
   final factory = _databaseFactory();
 
+  databaseFactory = factory;
+
   final database = await factory.openDatabase(
     path,
     options: OpenDatabaseOptions(version: 1),
