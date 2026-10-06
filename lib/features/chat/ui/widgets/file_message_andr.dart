@@ -1,5 +1,6 @@
 import 'package:convetchat/core/utils/file_format.dart';
 import 'package:convetchat/core/utils/message_format.dart';
+import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_status_icon.dart';
@@ -127,6 +128,37 @@ class _FileMessageAndrState() extends State<FileMessageAndr> {
                 ],
               ),
               const SizedBox(height: 4),
+              if (media?.caption case final caption? when caption.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 0, 2, 4),
+                  child: media?.captionHtml != null
+                      ? FormattedText(
+                          html: media!.captionHtml!,
+                          style: TextStyle(fontSize: 14, color: contentColor),
+                          linkStyle: TextStyle(
+                            fontSize: 14,
+                            color: isOwn ? scheme.onPrimary : scheme.primary,
+                            decoration: TextDecoration.underline,
+                            decorationColor: isOwn
+                                ? scheme.onPrimary
+                                : scheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      : FormattedText.plain(
+                          caption,
+                          style: TextStyle(fontSize: 14, color: contentColor),
+                          linkStyle: TextStyle(
+                            fontSize: 14,
+                            color: isOwn ? scheme.onPrimary : scheme.primary,
+                            decoration: TextDecoration.underline,
+                            decorationColor: isOwn
+                                ? scheme.onPrimary
+                                : scheme.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
               Row(
                 mainAxisSize: .min,
                 mainAxisAlignment: .end,

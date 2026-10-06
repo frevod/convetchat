@@ -6,31 +6,37 @@ import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
 class const MediaAttachSheetCup({super.key}) extends StatefulWidget {
   static Future<List<AssetEntity>?> show(BuildContext context) {
+    final cubit = context.read<ChatCubit>();
     return showCupertinoModalPopup<List<AssetEntity>>(
       context: context,
-      builder: (sheetContext) => Container(
-        height: MediaQuery.sizeOf(sheetContext).height * 0.7,
-        decoration: BoxDecoration(
-          color: CupertinoColors.secondarySystemBackground.resolveFrom(
-            sheetContext,
+      builder: (sheetContext) => BlocProvider<ChatCubit>.value(
+        value: cubit,
+        child: Container(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.7,
+          decoration: BoxDecoration(
+            color: CupertinoColors.secondarySystemBackground.resolveFrom(
+              sheetContext,
+            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           ),
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 36,
-                height: 5,
-                decoration: BoxDecoration(
-                  color: CupertinoColors.systemGrey2.resolveFrom(sheetContext),
-                  borderRadius: .circular(2.5),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                Container(
+                  width: 36,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: CupertinoColors.systemGrey2.resolveFrom(
+                      sheetContext,
+                    ),
+                    borderRadius: .circular(2.5),
+                  ),
                 ),
-              ),
-              const Expanded(child: MediaAttachSheetCup()),
-            ],
+                const Expanded(child: MediaAttachSheetCup()),
+              ],
+            ),
           ),
         ),
       ),

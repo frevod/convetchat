@@ -1,4 +1,5 @@
 import 'package:convetchat/core/platform_info.dart';
+import 'package:convetchat/core/utils/file_format.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_send_restriction.dart';
 import 'package:convetchat/features/chat/domain/entities/record_mode.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
@@ -7,7 +8,7 @@ import 'package:convetchat/features/chat/ui/widgets/media_attach_sheet_andr.dart
 import 'package:convetchat/features/chat/ui/widgets/pending_media_strip_andr.dart';
 import 'package:convetchat/features/chat/ui/widgets/record_mic_button.dart';
 import 'package:convetchat/features/chat/ui/widgets/recording_indicator.dart';
-import 'package:convetchat/features/chat/ui/widgets/reply_widget.dart';
+import 'package:convetchat/features/chat/ui/widgets/reply_preview_animation.dart';
 import 'package:convetchat/features/chat/ui/widgets/send_restriction_notice.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
@@ -36,12 +37,11 @@ class const MessageInputAndr({super.key}) extends StatelessWidget {
           padding: const EdgeInsets.all(8.0),
           child: Column(
             children: [
-              if (replyTo != null)
-                ReplyWidget(
-                  reply: replyTo,
-                  onCancel: cubit.cancelReply,
-                  onTap: () => cubit.jumpToMessage(replyTo.id),
-                ),
+              ReplyPreviewAnimation(
+                reply: replyTo,
+                onCancel: cubit.cancelReply,
+                onTapMessage: (message) => cubit.jumpToMessage(message.id),
+              ),
 
               if (state.editing case final editing?)
                 EditNotice(
@@ -49,11 +49,22 @@ class const MessageInputAndr({super.key}) extends StatelessWidget {
                   onTap: () => cubit.jumpToMessage(editing.id),
                 ),
 
-              if (state.pendingMedia.isNotEmpty)
+              if (state.pendingMedia.isNotEmpty) ...[
+                if (cubit.exceedsUploadLimit && state.uploadLimitBytes != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      'Лимит сервера на файлы – ${formatFileSize(state.uploadLimitBytes)} (вложения: ${formatFileSize(cubit.pendingUploadBytes)})',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ),
                 PendingMediaStripAndr(
                   items: state.pendingMedia,
                   onRemove: cubit.removePending,
                 ),
+              ],
 
               Row(
                 crossAxisAlignment: .end,
@@ -148,7 +159,9 @@ class const MessageInputAndr({super.key}) extends StatelessWidget {
                       final hasSendableMedia = state.pendingMedia.isNotEmpty;
                       final locked = state.recordLocked;
                       final canSend =
-                          (hasText || hasSendableMedia) && !state.isRecording;
+                          (hasText || hasSendableMedia) &&
+                          !state.isRecording &&
+                          !cubit.exceedsUploadLimit;
                       return RecordMicButton(
                         locked: locked,
                         onStart: cubit.startRecording,

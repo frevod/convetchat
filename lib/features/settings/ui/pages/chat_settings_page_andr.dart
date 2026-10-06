@@ -25,6 +25,12 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
   bool _quickReaction = true;
   String _quickEmoji = '❤️';
   String _circleQuality = CircleVideoService.defaultQualityName;
+  bool _newCameraApi = false;
+  bool _cameraMirror = true;
+  bool _cameraAutofocus = true;
+  int _cameraFps = 30;
+
+  static const _fpsOptions = [24, 30, 60];
 
   @override
   void initState() {
@@ -35,6 +41,7 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
     _loadAutoplay();
     _loadInteraction();
     _loadCircleQuality();
+    _loadCameraApi();
   }
 
   Future<void> _loadMarkdown() async {
@@ -234,12 +241,74 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
     List<M3EDropdownItem<String>> selected,
   ) async {
     if (selected.isEmpty) return;
-    final quality = selected.first.value;
+    await _setCircleQuality(selected.first.value);
+  }
+
+  Future<void> _setCircleQuality(String quality) async {
     setState(() => _circleQuality = quality);
     try {
       await getIt<ChatRepository>().setCircleVideoQuality(quality);
     } catch (e, s) {
       getIt<Talker>().error('[settings] save circle quality failed', e, s);
+    }
+  }
+
+  Future<void> _loadCameraApi() async {
+    try {
+      final chat = getIt<ChatRepository>();
+      final api = await chat.isNewCameraApiEnabled();
+      final mirror = await chat.isCameraMirrorEnabled();
+      final focus = await chat.isCameraAutofocusEnabled();
+      final fps = await chat.getCameraFps();
+      if (!mounted) return;
+      setState(() {
+        _newCameraApi = api;
+        _cameraMirror = mirror;
+        _cameraAutofocus = focus;
+        _cameraFps = fps;
+      });
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] read camera api failed', e, s);
+    }
+  }
+
+  Future<void> _setNewCameraApi(bool value) async {
+    setState(() => _newCameraApi = value);
+    try {
+      await getIt<ChatRepository>().setNewCameraApiEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera api failed', e, s);
+    }
+  }
+
+  Future<void> _setCameraMirror(bool value) async {
+    setState(() => _cameraMirror = value);
+    try {
+      await getIt<ChatRepository>().setCameraMirrorEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera mirror failed', e, s);
+    }
+  }
+
+  Future<void> _setCameraAutofocus(bool value) async {
+    setState(() => _cameraAutofocus = value);
+    try {
+      await getIt<ChatRepository>().setCameraAutofocusEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera focus failed', e, s);
+    }
+  }
+
+  Future<void> _onCameraFpsChanged(
+    List<M3EDropdownItem<String>> selected,
+  ) async {
+    if (selected.isEmpty) return;
+    final fps = int.tryParse(selected.first.value) ?? 30;
+    setState(() => _cameraFps = fps);
+    try {
+      await getIt<ChatRepository>().setCameraFps(fps);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera fps failed', e, s);
     }
   }
 
@@ -332,43 +401,70 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
         ),
     ];
     final videoRows = [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: Column(
-          crossAxisAlignment: .start,
-          children: [
-            Row(
-              spacing: 16,
-              children: [
-                const Icon(Icons.videocam_rounded),
-                Text(
-                  'Качество видеосообщений',
-                  style: Theme.of(context).textTheme.titleMedium,
+      _switchRow(
+        icon: Icons.camera_alt_rounded,
+        headline: 'Новый движок камеры',
+        supportingText: 'Экспериментальный движок записи видеосообщений',
+        value: _newCameraApi,
+        onChanged: _setNewCameraApi,
+      ),
+      M3EListItem(
+        leading: const Icon(Icons.high_quality_rounded),
+        headline: 'Качество',
+        trailing: SizedBox(
+          width: 180,
+          child: M3EDropdownMenu<String>(
+            singleSelect: true,
+            showChipAnimation: false,
+            searchEnabled: false,
+            items: [
+              for (final name in CircleVideoService.qualityNames)
+                M3EDropdownItem(
+                  label: CircleVideoService.qualityLabel(name),
+                  value: name,
+                  selected: _circleQuality == name,
                 ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Разрешение записи кружков. Выше качество — тяжелее файлы.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 12),
-            M3EDropdownMenu<String>(
-              singleSelect: true,
-              showChipAnimation: false,
-              items: [
-                for (final name in CircleVideoService.qualityNames)
-                  M3EDropdownItem(
-                    label: CircleVideoService.qualityLabel(name),
-                    value: name,
-                    selected: _circleQuality == name,
-                  ),
-              ],
-              onSelectionChanged: _onCircleQualityChanged,
-            ),
-          ],
+            ],
+            onSelectionChanged: _onCircleQualityChanged,
+          ),
         ),
       ),
+      if (_newCameraApi)
+        _switchRow(
+          icon: Icons.flip_camera_android_rounded,
+          headline: 'Зеркалирование фронтальной камеры',
+          value: _cameraMirror,
+          onChanged: _setCameraMirror,
+        ),
+      if (_newCameraApi)
+        M3EListItem(
+          leading: const Icon(Icons.speed_rounded),
+          headline: 'Частота кадров',
+          trailing: SizedBox(
+            width: 140,
+            child: M3EDropdownMenu<String>(
+              singleSelect: true,
+              showChipAnimation: false,
+              searchEnabled: false,
+              items: [
+                for (final fps in _fpsOptions)
+                  M3EDropdownItem(
+                    label: '$fps fps',
+                    value: '$fps',
+                    selected: _cameraFps == fps,
+                  ),
+              ],
+              onSelectionChanged: _onCameraFpsChanged,
+            ),
+          ),
+        ),
+      if (_newCameraApi)
+        _switchRow(
+          icon: Icons.center_focus_strong_rounded,
+          headline: 'Автофокус',
+          value: _cameraAutofocus,
+          onChanged: _setCameraAutofocus,
+        ),
     ];
     return Scaffold(
       appBar: M3EAppBar.top(
@@ -387,10 +483,7 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
             const SizedBox(height: 12),
             _rowsList(autoplayRows),
             const SizedBox(height: 12),
-            M3EList(
-              itemCount: videoRows.length,
-              itemBuilder: (context, index) => videoRows[index],
-            ),
+            _rowsList(videoRows),
             const SizedBox(height: 12),
             _rowsList(otherRows),
           ],

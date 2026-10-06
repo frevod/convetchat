@@ -1,5 +1,6 @@
 import 'package:convetchat/core/utils/file_format.dart';
 import 'package:convetchat/core/utils/message_format.dart';
+import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_status_icon.dart';
@@ -121,6 +122,39 @@ class _FileMessageCupState() extends State<FileMessageCup> {
                 ],
               ),
               const SizedBox(height: 4),
+              if (media?.caption case final caption? when caption.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(2, 0, 2, 4),
+                  child: media?.captionHtml != null
+                      ? FormattedText(
+                          html: media!.captionHtml!,
+                          style: TextStyle(fontSize: 14, color: label),
+                          linkStyle: TextStyle(
+                            fontSize: 14,
+                            color: CupertinoColors.activeBlue.resolveFrom(
+                              context,
+                            ),
+                            decoration: TextDecoration.underline,
+                            decorationColor: CupertinoColors.activeBlue
+                                .resolveFrom(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        )
+                      : FormattedText.plain(
+                          caption,
+                          style: TextStyle(fontSize: 14, color: label),
+                          linkStyle: TextStyle(
+                            fontSize: 14,
+                            color: CupertinoColors.activeBlue.resolveFrom(
+                              context,
+                            ),
+                            decoration: TextDecoration.underline,
+                            decorationColor: CupertinoColors.activeBlue
+                                .resolveFrom(context),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
               Row(
                 mainAxisSize: .min,
                 mainAxisAlignment: .end,

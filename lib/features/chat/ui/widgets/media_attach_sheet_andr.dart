@@ -7,12 +7,16 @@ import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 
 class const MediaAttachSheetAndr({super.key}) extends StatefulWidget {
   static Future<List<AssetEntity>?> show(BuildContext context) {
+    final cubit = context.read<ChatCubit>();
     return M3EBottomSheet.show<List<AssetEntity>>(
       context,
       initialValue: .expanded,
-      builder: (sheetContext) => SizedBox(
-        height: MediaQuery.sizeOf(sheetContext).height * 0.7,
-        child: const MediaAttachSheetAndr(),
+      builder: (sheetContext) => BlocProvider<ChatCubit>.value(
+        value: cubit,
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheetContext).height * 0.7,
+          child: const MediaAttachSheetAndr(),
+        ),
       ),
     );
   }

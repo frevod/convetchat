@@ -6,6 +6,8 @@ import 'package:convetchat/features/settings/domain/repositories/security_reposi
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:local_auth_android/local_auth_android.dart';
+import 'package:local_auth_darwin/local_auth_darwin.dart';
 import 'package:matrix/matrix.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -188,11 +190,27 @@ class SecurityRepositoryImpl({LocalAuthentication? auth})
     }
   }
 
+  static const _androidAuthMessages = [
+    AndroidAuthMessages(
+      signInTitle: 'Требуется подтверждение',
+      signInHint: 'Подтвердите личность',
+      cancelButton: 'Отмена',
+    ),
+  ];
+
+  static const _iosAuthMessages = [
+    IOSAuthMessages(cancelButton: 'Отмена', localizedFallbackTitle: ''),
+  ];
+
   @override
   Future<bool> authenticate({required String reason}) async {
     try {
       return await _auth.authenticate(
         localizedReason: reason,
+        authMessages: [
+          ..._androidAuthMessages,
+          ..._iosAuthMessages,
+        ],
         biometricOnly: true,
       );
     } catch (e, s) {

@@ -54,6 +54,8 @@ class const ChatState({
   final bool swipeToReplyEnabled = true,
   final bool quickReactionEnabled = true,
   final String quickReactionEmoji = '❤️',
+
+  final int? uploadLimitBytes,
 }) extends Equatable {
   ChatState copyWith({
     String Function()? roomName,
@@ -89,6 +91,7 @@ class const ChatState({
     bool Function()? swipeToReplyEnabled,
     bool Function()? quickReactionEnabled,
     String Function()? quickReactionEmoji,
+    int? Function()? uploadLimitBytes,
   }) {
     return ChatState(
       roomName: roomName != null ? roomName() : this.roomName,
@@ -155,6 +158,9 @@ class const ChatState({
       quickReactionEmoji: quickReactionEmoji != null
           ? quickReactionEmoji()
           : this.quickReactionEmoji,
+      uploadLimitBytes: uploadLimitBytes != null
+          ? uploadLimitBytes()
+          : this.uploadLimitBytes,
     );
   }
 
@@ -192,5 +198,6 @@ class const ChatState({
     swipeToReplyEnabled,
     quickReactionEnabled,
     quickReactionEmoji,
+    uploadLimitBytes,
   ];
 }

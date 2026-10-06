@@ -165,7 +165,6 @@ Future<void> onBackgroundMessage(RemoteMessage message) async {
 
   try {
     if (!await contentPreviewEnabled()) {
-      talker.info('[push:bg] content preview off, generic notification');
       settled = true;
       await showFallback();
       return;

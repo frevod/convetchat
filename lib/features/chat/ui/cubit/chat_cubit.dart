@@ -122,6 +122,7 @@ class ChatCubit(
       final swipe = await _repository.isSwipeToReplyEnabled();
       final quick = await _repository.isQuickReactionEnabled();
       final emoji = await _repository.getQuickReactionEmoji();
+      final limit = await _repository.uploadLimit();
       if (isClosed) return;
       emit(
         state.copyWith(
@@ -129,11 +130,26 @@ class ChatCubit(
           swipeToReplyEnabled: () => swipe,
           quickReactionEnabled: () => quick,
           quickReactionEmoji: () => emoji,
+          uploadLimitBytes: () => limit,
         ),
       );
     } catch (e, s) {
       getIt<Talker>().error('[chat] load input settings failed', e, s);
     }
+  }
+
+  int get pendingUploadBytes {
+    var total = 0;
+    for (final p in state.pendingMedia) {
+      if (p.isFile || p.isVideo) total += p.size ?? 0;
+    }
+    return total;
+  }
+
+  bool get exceedsUploadLimit {
+    final limit = state.uploadLimitBytes;
+    if (limit == null || state.pendingMedia.isEmpty) return false;
+    return pendingUploadBytes > limit;
   }
 
   Future<void> refreshInteractionSettings() => _loadInteractionSettings();
@@ -224,6 +240,9 @@ class ChatCubit(
       }
     } catch (_) {}
     try {
+      await getIt<CircleVideoService>().abortAwesomeRecording();
+    } catch (_) {}
+    try {
       await getIt<CircleVideoService>().disposePreview();
     } catch (_) {}
     try {
@@ -275,6 +294,7 @@ class ChatCubit(
     final editing = state.editing;
     final pending = List<PendingMedia>.of(state.pendingMedia);
     if (text.isEmpty && pending.isEmpty && editing == null) return;
+    if (exceedsUploadLimit) return;
 
     if (editing != null) {
       if (text.isEmpty || pending.isNotEmpty) return;
@@ -420,6 +440,10 @@ class ChatCubit(
         );
         if (isClosed) return;
         final isVideo = asset.type == .video;
+        int? size;
+        try {
+          size = await file.length();
+        } catch (_) {}
         items.add(
           PendingMedia(
             id: '${DateTime.now().microsecondsSinceEpoch}_${asset.id}',
@@ -432,6 +456,7 @@ class ChatCubit(
             durationMs: isVideo ? asset.videoDuration.inMilliseconds : null,
             thumbWidth: _thumbSide(asset.width, asset.height).$1,
             thumbHeight: _thumbSide(asset.width, asset.height).$2,
+            size: size,
           ),
         );
       } catch (e, s) {
@@ -1231,6 +1256,10 @@ class ChatCubit(
     final generation = ++_recordGeneration;
     final pendingLock = _pendingLockGeneration == generation;
     if (pendingLock) _pendingLockGeneration = null;
+    if (await _repository.isNewCameraApiEnabled()) {
+      await _startAwesomeRecording(generation, pendingLock);
+      return;
+    }
     if (!isClosed) {
       emit(
         state.copyWith(
@@ -1292,6 +1321,95 @@ class ChatCubit(
       if (generation == _recordGeneration) _resetRecordFlags();
       emit(state.copyWith(errorMessage: () => 'Не удалось начать запись'));
     }
+  }
+
+  Future<void> _startAwesomeRecording(int generation, bool pendingLock) async {
+    try {
+      if (isClosed || generation != _recordGeneration) return;
+      if (!await _configureAwesomePreview()) {
+        if (!isClosed && generation == _recordGeneration) _resetRecordFlags();
+        return;
+      }
+      if (isClosed || generation != _recordGeneration) return;
+      emit(
+        state.copyWith(
+          isRecording: () => true,
+          recordElapsed: () => Duration.zero,
+          recordLevels: () => const <double>[],
+          recordLocked: () => pendingLock,
+        ),
+      );
+      final ready = await getIt<CircleVideoService>().waitAwesomeVideo();
+      if (isClosed || generation != _recordGeneration) return;
+      if (!ready) {
+        _resetRecordFlags();
+        getIt<Talker>().error('[chat] awesome camera not ready');
+        emit(state.copyWith(errorMessage: () => 'Не удалось включить камеру'));
+        return;
+      }
+      if (!isClosed && generation == _recordGeneration) {
+        emit(state.copyWith(circleReady: () => true));
+      }
+      final started = await getIt<CircleVideoService>().startAwesomeRecording();
+      if (!started) {
+        if (isClosed || generation != _recordGeneration) return;
+        _resetRecordFlags();
+        emit(state.copyWith(errorMessage: () => 'Не удалось начать запись'));
+        return;
+      }
+      if (generation != _recordGeneration || isClosed) {
+        await getIt<CircleVideoService>().abortAwesomeRecording();
+        return;
+      }
+      _recordWatch = Stopwatch()..start();
+      _recordTick?.cancel();
+      _recordTick = Timer.periodic(
+        const Duration(milliseconds: 100),
+        (_) => _pollCircle(),
+      );
+      _circleAutoStop?.cancel();
+      _circleAutoStop = Timer(
+        const Duration(milliseconds: maxCircleVideoMs),
+        () {
+          if (!isClosed && state.isRecording && state.recordMode == .circle) {
+            unawaited(stopCircleAndSend());
+          }
+        },
+      );
+    } catch (e, s) {
+      if (isClosed) return;
+      getIt<Talker>().error('[chat] start circle recording failed', e, s);
+      if (generation == _recordGeneration) _resetRecordFlags();
+      emit(state.copyWith(errorMessage: () => 'Не удалось начать запись'));
+    }
+  }
+
+  Future<bool> _configureAwesomePreview() async {
+    if (!PlatformInfos.supportsCamera) {
+      if (!isClosed) {
+        emit(
+          state.copyWith(errorMessage: () => 'Кружки недоступны на десктопе'),
+        );
+      }
+      return false;
+    }
+    final status = await Permission.camera.request();
+    if (isClosed || state.recordMode != .circle) return false;
+    if (!status.isGranted) {
+      emit(state.copyWith(errorMessage: () => 'Нет доступа к камере'));
+      return false;
+    }
+    final quality = await _repository.getCircleVideoQuality();
+    final mirror = await _repository.isCameraMirrorEnabled();
+    final fps = await _repository.getCameraFps();
+    final focus = await _repository.isCameraAutofocusEnabled();
+    await getIt<CircleVideoService>().configureAwesome(
+      quality: quality,
+      mirror: mirror,
+      fps: fps,
+      autofocus: focus,
+    );
+    return true;
   }
 
   void _resetRecordFlags() {
@@ -1438,6 +1556,11 @@ class ChatCubit(
     final elapsed = _recordWatch?.elapsed ?? Duration.zero;
     final replyToEventId = state.replyTo?.id;
     _recordWatch = null;
+    String? awesomePath;
+    if (await _repository.isNewCameraApiEnabled()) {
+      awesomePath = await getIt<CircleVideoService>().stopAwesomeRecording();
+      await getIt<CircleVideoService>().disposePreview();
+    }
     if (!isClosed) {
       emit(
         state.copyWith(
@@ -1451,9 +1574,23 @@ class ChatCubit(
       );
     }
     try {
-      final file = await _stopCircleVideo();
-      await getIt<CircleVideoService>().disposePreview();
-      if (file == null || file.path.isEmpty) {
+      String? videoPath = awesomePath;
+      if (videoPath == null) {
+        final file = await _stopCircleVideo();
+        await getIt<CircleVideoService>().disposePreview();
+        if (file == null || file.path.isEmpty) {
+          if (elapsed.inMilliseconds < minCircleVideoMs) {
+            if (!isClosed) {
+              emit(
+                state.copyWith(errorMessage: () => 'Слишком короткий кружок'),
+              );
+            }
+            return;
+          }
+          throw Exception('Пустая запись');
+        }
+        videoPath = file.path;
+      } else if (videoPath.isEmpty) {
         if (elapsed.inMilliseconds < minCircleVideoMs) {
           if (!isClosed) {
             emit(state.copyWith(errorMessage: () => 'Слишком короткий кружок'));
@@ -1463,17 +1600,17 @@ class ChatCubit(
         throw Exception('Пустая запись');
       }
       if (elapsed.inMilliseconds < minCircleVideoMs) {
-        await _deleteRecordFile(file.path);
+        await _deleteRecordFile(videoPath);
         if (!isClosed) {
           emit(state.copyWith(errorMessage: () => 'Слишком короткий кружок'));
         }
         return;
       }
       try {
-        final thumb = await _circleThumb(file.path);
+        final thumb = await _circleThumb(videoPath);
         await _repository.sendMedia(
           roomId: _roomId,
-          filePath: file.path,
+          filePath: videoPath,
           fileName: 'circle_${DateTime.now().millisecondsSinceEpoch}.mp4',
           isVideo: true,
           isCircle: true,
@@ -1484,7 +1621,7 @@ class ChatCubit(
           inReplyToEventId: replyToEventId,
         );
       } finally {
-        await _deleteRecordFile(file.path);
+        await _deleteRecordFile(videoPath);
       }
     } catch (e, s) {
       if (isClosed) return;
@@ -1604,10 +1741,15 @@ class ChatCubit(
       );
     }
     try {
-      final file = await _stopCircleVideo();
-      await getIt<CircleVideoService>().disposePreview();
-      if (file != null && file.path.isNotEmpty) {
-        await _deleteRecordFile(file.path);
+      if (await _repository.isNewCameraApiEnabled()) {
+        await service.abortAwesomeRecording();
+        await service.disposePreview();
+      } else {
+        final file = await _stopCircleVideo();
+        await getIt<CircleVideoService>().disposePreview();
+        if (file != null && file.path.isNotEmpty) {
+          await _deleteRecordFile(file.path);
+        }
       }
     } catch (_) {}
   }

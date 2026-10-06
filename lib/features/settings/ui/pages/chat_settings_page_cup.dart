@@ -24,6 +24,12 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
   bool _quickReaction = true;
   String _quickEmoji = '❤️';
   String _circleQuality = CircleVideoService.defaultQualityName;
+  bool _newCameraApi = false;
+  bool _cameraMirror = true;
+  bool _cameraAutofocus = true;
+  int _cameraFps = 30;
+
+  static const _fpsOptions = [24, 30, 60];
 
   @override
   void initState() {
@@ -34,6 +40,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     _loadAutoplay();
     _loadInteraction();
     _loadCircleQuality();
+    _loadCameraApi();
   }
 
   Future<void> _loadMarkdown() async {
@@ -239,6 +246,101 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     }
   }
 
+  Future<void> _loadCameraApi() async {
+    try {
+      final chat = getIt<ChatRepository>();
+      final api = await chat.isNewCameraApiEnabled();
+      final mirror = await chat.isCameraMirrorEnabled();
+      final focus = await chat.isCameraAutofocusEnabled();
+      final fps = await chat.getCameraFps();
+      if (!mounted) return;
+      setState(() {
+        _newCameraApi = api;
+        _cameraMirror = mirror;
+        _cameraAutofocus = focus;
+        _cameraFps = fps;
+      });
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] read camera api failed', e, s);
+    }
+  }
+
+  Future<void> _setNewCameraApi(bool value) async {
+    setState(() => _newCameraApi = value);
+    try {
+      await getIt<ChatRepository>().setNewCameraApiEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera api failed', e, s);
+    }
+  }
+
+  Future<void> _setCameraMirror(bool value) async {
+    setState(() => _cameraMirror = value);
+    try {
+      await getIt<ChatRepository>().setCameraMirrorEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera mirror failed', e, s);
+    }
+  }
+
+  Future<void> _setCameraAutofocus(bool value) async {
+    setState(() => _cameraAutofocus = value);
+    try {
+      await getIt<ChatRepository>().setCameraAutofocusEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera focus failed', e, s);
+    }
+  }
+
+  Future<void> _pickCircleQuality() async {
+    final picked = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('Качество видеосообщений'),
+        actions: [
+          for (final name in CircleVideoService.qualityNames)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(sheetContext).pop(name),
+              child: Text(CircleVideoService.qualityLabel(name)),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(sheetContext).pop(),
+          child: const Text('Отмена'),
+        ),
+      ),
+    );
+    await _setCircleQuality(picked);
+  }
+
+  Future<void> _pickCameraFps() async {
+    final picked = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (sheetContext) => CupertinoActionSheet(
+        title: const Text('Частота кадров'),
+        actions: [
+          for (final fps in _fpsOptions)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(sheetContext).pop('$fps'),
+              child: Text('$fps fps'),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(sheetContext).pop(),
+          child: const Text('Отмена'),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    final fps = int.tryParse(picked) ?? 30;
+    setState(() => _cameraFps = fps);
+    try {
+      await getIt<ChatRepository>().setCameraFps(fps);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save camera fps failed', e, s);
+    }
+  }
+
   CupertinoListTile _switchTile({
     required IconData icon,
     required String title,
@@ -252,12 +354,6 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
       onTap: () => onChanged(!value),
     );
   }
-
-  static String _qualityShort(String name) => switch (name) {
-    'medium' => '480p',
-    'high' => '720p',
-    _ => '1080p',
-  };
 
   @override
   Widget build(BuildContext context) {
@@ -333,26 +429,46 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
             ),
             CupertinoListSection.insetGrouped(
               backgroundColor: CupertinoColors.transparent,
-              header: const Text('Качество видеосообщений'),
+              header: const Text('Камера для кружков'),
               footer: const Text(
-                'Разрешение записи кружков. Выше качество — тяжелее файлы.',
+                'Выше качество — тяжелее файлы.',
               ),
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: CupertinoSlidingSegmentedControl<String>(
-                    groupValue: _circleQuality,
-                    onValueChanged: _setCircleQuality,
-                    children: {
-                      for (final name
-                          in CircleVideoService.qualityNames)
-                        name: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text(_qualityShort(name)),
-                        ),
-                    },
-                  ),
+                _switchTile(
+                  icon: CupertinoIcons.camera_fill,
+                  title: 'Новый API камеры',
+                  value: _newCameraApi,
+                  onChanged: _setNewCameraApi,
                 ),
+                CupertinoListTile(
+                  leading: const Icon(CupertinoIcons.videocam_fill),
+                  title: const Text('Качество'),
+                  trailing: Text(
+                    CircleVideoService.qualityLabel(_circleQuality),
+                  ),
+                  onTap: _pickCircleQuality,
+                ),
+                if (_newCameraApi)
+                  _switchTile(
+                    icon: CupertinoIcons.camera_on_rectangle,
+                    title: 'Зеркалирование фронтальной камеры',
+                    value: _cameraMirror,
+                    onChanged: _setCameraMirror,
+                  ),
+                if (_newCameraApi)
+                  CupertinoListTile(
+                    leading: const Icon(CupertinoIcons.speedometer),
+                    title: const Text('Частота кадров'),
+                    trailing: Text('$_cameraFps fps'),
+                    onTap: _pickCameraFps,
+                  ),
+                if (_newCameraApi)
+                  _switchTile(
+                    icon: CupertinoIcons.viewfinder,
+                    title: 'Автофокус',
+                    value: _cameraAutofocus,
+                    onChanged: _setCameraAutofocus,
+                  ),
               ],
             ),
             CupertinoListSection.insetGrouped(

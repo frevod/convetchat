@@ -259,7 +259,7 @@ class const RuMatrixLocalizations() extends MatrixLocalizations {
       'Не удалось расшифровать сообщение';
 
   @override
-  String unknownEvent(String typeKey) => 'Служебное событие: $typeKey';
+  String unknownEvent(String typeKey) => 'Неизвестное событие: $typeKey';
 
   @override
   String startedACall(String senderName) => '$senderName начал(а) звонок';

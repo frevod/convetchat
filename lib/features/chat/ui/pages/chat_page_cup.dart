@@ -2,6 +2,7 @@ import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/core/widgets/mxc_avatar.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/chat_message_list.dart';
+import 'package:convetchat/features/chat/ui/widgets/circle_preview_cup.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_input.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_selection.dart';
 import 'package:convetchat/features/chat/ui/widgets/pinned_banner.dart';
@@ -80,11 +81,16 @@ class const ChatPageCup({super.key}) extends StatelessWidget {
               ),
       ),
       child: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            const PinnedBanner(),
-            Expanded(child: ChatMessageList()),
-            const MessageInput(),
+            Column(
+              children: [
+                const PinnedBanner(),
+                Expanded(child: ChatMessageList()),
+                const MessageInput(),
+              ],
+            ),
+            const CirclePreviewCup(),
           ],
         ),
       ),

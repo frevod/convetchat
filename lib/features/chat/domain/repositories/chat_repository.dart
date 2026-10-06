@@ -80,6 +80,8 @@ abstract class ChatRepository() {
     String? inReplyToEventId,
   });
 
+  Future<int> uploadLimit();
+
   Future<void> cancelSend({required String roomId, required String eventId});
 
   Future<void> retrySend({required String roomId, required String eventId});
@@ -177,4 +179,20 @@ abstract class ChatRepository() {
   Future<String> getCircleVideoQuality();
 
   Future<void> setCircleVideoQuality(String quality);
+
+  Future<bool> isNewCameraApiEnabled();
+
+  Future<void> setNewCameraApiEnabled(bool enabled);
+
+  Future<bool> isCameraMirrorEnabled();
+
+  Future<void> setCameraMirrorEnabled(bool enabled);
+
+  Future<bool> isCameraAutofocusEnabled();
+
+  Future<void> setCameraAutofocusEnabled(bool enabled);
+
+  Future<int> getCameraFps();
+
+  Future<void> setCameraFps(int fps);
 }

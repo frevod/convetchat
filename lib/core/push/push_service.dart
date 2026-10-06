@@ -190,7 +190,6 @@ class PushService(final Client _client, final Talker _talker) {
       if (eventId != null && roomId != null) {
         try {
           if (!await contentPreviewEnabled()) {
-            _talker.info('[push:fg] content preview off, generic notification');
             await showFallbackNotification(
               roomId: roomId,
               eventId: eventId,

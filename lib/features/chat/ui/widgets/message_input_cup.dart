@@ -1,4 +1,5 @@
 import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
+import 'package:convetchat/core/utils/file_format.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_send_restriction.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/edit_notice.dart';
@@ -6,7 +7,7 @@ import 'package:convetchat/features/chat/ui/widgets/media_attach_sheet_cup.dart'
 import 'package:convetchat/features/chat/ui/widgets/pending_media_strip_cup.dart';
 import 'package:convetchat/features/chat/ui/widgets/record_mic_button.dart';
 import 'package:convetchat/features/chat/ui/widgets/recording_indicator.dart';
-import 'package:convetchat/features/chat/ui/widgets/reply_widget.dart';
+import 'package:convetchat/features/chat/ui/widgets/reply_preview_animation.dart';
 import 'package:convetchat/features/chat/ui/widgets/send_restriction_notice.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/services.dart';
@@ -42,15 +43,12 @@ class const MessageInputCup({super.key}) extends StatelessWidget {
         child: Column(
           mainAxisSize: .min,
           children: [
-            if (replyTo != null)
-              Padding(
-                padding: stripInsets,
-                child: ReplyWidget(
-                  reply: replyTo,
-                  onCancel: cubit.cancelReply,
-                  onTap: () => cubit.jumpToMessage(replyTo.id),
-                ),
-              ),
+            ReplyPreviewAnimation(
+              reply: replyTo,
+              contentPadding: stripInsets,
+              onCancel: cubit.cancelReply,
+              onTapMessage: (message) => cubit.jumpToMessage(message.id),
+            ),
 
             if (state.editing case final editing?)
               Padding(
@@ -64,9 +62,28 @@ class const MessageInputCup({super.key}) extends StatelessWidget {
             if (state.pendingMedia.isNotEmpty)
               Padding(
                 padding: stripInsets,
-                child: PendingMediaStripCup(
-                  items: state.pendingMedia,
-                  onRemove: cubit.removePending,
+                child: Column(
+                  mainAxisSize: .min,
+                  crossAxisAlignment: .stretch,
+                  children: [
+                    if (cubit.exceedsUploadLimit &&
+                        state.uploadLimitBytes != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          'Лимит сервера на файлы – ${formatFileSize(state.uploadLimitBytes)} (вложения: ${formatFileSize(cubit.pendingUploadBytes)})',
+                          textAlign: .center,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: CupertinoColors.systemRed,
+                          ),
+                        ),
+                      ),
+                    PendingMediaStripCup(
+                      items: state.pendingMedia,
+                      onRemove: cubit.removePending,
+                    ),
+                  ],
                 ),
               ),
 
@@ -173,7 +190,9 @@ class const MessageInputCup({super.key}) extends StatelessWidget {
                         ],
                       );
                     }
-                    if ((hasText || hasSendableMedia) && !state.isRecording) {
+                    if ((hasText || hasSendableMedia) &&
+                        !state.isRecording &&
+                        !cubit.exceedsUploadLimit) {
                       return _CircleButton(
                         onPressed: cubit.send,
                         background: blue,

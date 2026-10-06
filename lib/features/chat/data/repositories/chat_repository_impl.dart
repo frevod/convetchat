@@ -38,6 +38,10 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   static const _quickReactionKey = 'chat_quick_reaction_enabled';
   static const _quickReactionEmojiKey = 'chat_quick_reaction_emoji';
   static const _circleQualityKey = 'chat_circle_video_quality';
+  static const _newCameraApiKey = 'chat_new_camera_api_enabled';
+  static const _cameraMirrorKey = 'chat_camera_mirror_enabled';
+  static const _cameraAutofocusKey = 'chat_camera_autofocus_enabled';
+  static const _cameraFpsKey = 'chat_camera_fps';
 
   static const defaultQuickReactionEmoji = '❤️';
 
@@ -53,6 +57,10 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   bool? _swipeToReplyCache;
   bool? _quickReactionCache;
   String? _quickReactionEmojiCache;
+  bool? _newCameraApiCache;
+  bool? _cameraMirrorCache;
+  bool? _cameraAutofocusCache;
+  int? _cameraFpsCache;
 
   final Map<String, Timeline> _timelines = {};
 
@@ -648,7 +656,74 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_circleQualityKey, quality);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить качество', e, s);
+      getIt<Talker>().error('[chat] save setting failed', e, s);
+    }
+  }
+
+  @override
+  Future<bool> isNewCameraApiEnabled() => _flag(
+    _newCameraApiCache,
+    _newCameraApiKey,
+    false,
+    (v) => _newCameraApiCache = v,
+  );
+
+  @override
+  Future<void> setNewCameraApiEnabled(bool enabled) async {
+    _newCameraApiCache = enabled;
+    await _setFlag(_newCameraApiKey, enabled);
+  }
+
+  @override
+  Future<bool> isCameraMirrorEnabled() => _flag(
+    _cameraMirrorCache,
+    _cameraMirrorKey,
+    true,
+    (v) => _cameraMirrorCache = v,
+  );
+
+  @override
+  Future<void> setCameraMirrorEnabled(bool enabled) async {
+    _cameraMirrorCache = enabled;
+    await _setFlag(_cameraMirrorKey, enabled);
+  }
+
+  @override
+  Future<bool> isCameraAutofocusEnabled() => _flag(
+    _cameraAutofocusCache,
+    _cameraAutofocusKey,
+    true,
+    (v) => _cameraAutofocusCache = v,
+  );
+
+  @override
+  Future<void> setCameraAutofocusEnabled(bool enabled) async {
+    _cameraAutofocusCache = enabled;
+    await _setFlag(_cameraAutofocusKey, enabled);
+  }
+
+  @override
+  Future<int> getCameraFps() async {
+    final cached = _cameraFpsCache;
+    if (cached != null) return cached;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getInt(_cameraFpsKey) ?? 30;
+      _cameraFpsCache = stored;
+      return stored;
+    } catch (_) {
+      return 30;
+    }
+  }
+
+  @override
+  Future<void> setCameraFps(int fps) async {
+    _cameraFpsCache = fps;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_cameraFpsKey, fps);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] save setting failed', e, s);
     }
   }
 
@@ -841,6 +916,9 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   static const _sendShrinkMaxDimension = 1600;
 
   static const _fallbackUploadBytes = 200 * 1024 * 1024;
+
+  @override
+  Future<int> uploadLimit() => _uploadLimit();
 
   Future<int> _uploadLimit() async {
     try {
