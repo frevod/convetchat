@@ -4,14 +4,12 @@ import 'package:convetchat/features/settings/domain/repositories/security_reposi
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/services.dart';
 
-/// Полноэкранная блокировка. Назад выйти нельзя — только верный PIN
-/// или биометрия (если включена).
 class const AppLockPageCup({super.key}) extends StatefulWidget {
   @override
   State<AppLockPageCup> createState() => _AppLockPageCupState();
 }
 
-class _AppLockPageCupState extends State<AppLockPageCup> {
+class _AppLockPageCupState() extends State<AppLockPageCup> {
   String _pin = '';
   String? _error;
   bool _checking = false;
@@ -120,7 +118,9 @@ class _AppLockPageCupState extends State<AppLockPageCup> {
                           shape: BoxShape.circle,
                           color: i < _pin.length
                               ? CupertinoColors.activeBlue.resolveFrom(context)
-                              : CupertinoColors.systemGrey4.resolveFrom(context),
+                              : CupertinoColors.systemGrey4.resolveFrom(
+                                  context,
+                                ),
                         ),
                       ),
                   ],
@@ -164,10 +164,8 @@ class _AppLockPageCupState extends State<AppLockPageCup> {
                           onTap: _pin.isEmpty
                               ? null
                               : () => setState(
-                                  () => _pin = _pin.substring(
-                                    0,
-                                    _pin.length - 1,
-                                  ),
+                                  () =>
+                                      _pin = _pin.substring(0, _pin.length - 1),
                                 ),
                           child: Container(
                             decoration: BoxDecoration(

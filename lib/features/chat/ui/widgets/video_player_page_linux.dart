@@ -40,7 +40,7 @@ class _VideoPlayerPageLinuxState() extends State<VideoPlayerPageLinux> {
       await player.open(Media(file.path));
       await player.play();
     } catch (e, s) {
-      getIt<Talker>().error('Видео: не удалось воспроизвести', e, s);
+      getIt<Talker>().error('[chat] video playback failed', e, s);
       if (!mounted) return;
       setState(() => _error = '$e');
     }
@@ -57,7 +57,7 @@ class _VideoPlayerPageLinuxState() extends State<VideoPlayerPageLinux> {
       final file = await widget.file;
       await launchUrl(Uri.file(file.path));
     } catch (e, s) {
-      getIt<Talker>().error('Видео: не удалось открыть внешне', e, s);
+      getIt<Talker>().error('[chat] open video externally failed', e, s);
     }
   }
 

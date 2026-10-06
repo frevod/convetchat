@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:convetchat/features/settings/data/repositories/security_repository_impl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_vodozemac/flutter_vodozemac.dart' as vod;
 import 'package:matrix/matrix.dart';
@@ -75,7 +76,8 @@ class ClientFactory() {
       logLevel: kDebugMode ? .debug : .warning,
       defaultNetworkRequestTimeout: const Duration(minutes: 1),
 
-      shareKeysWith: .all,
+      shareKeysWith:
+          await SecurityRepositoryImpl.restoredShareKeysMode(),
       enableDehydratedDevices:
           await experimentalDehydratedDevicesEnabled(),
     );

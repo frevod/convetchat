@@ -1,18 +1,17 @@
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/security/app_lock_service.dart';
 import 'package:convetchat/features/settings/domain/repositories/security_repository.dart';
+import 'package:convetchat/features/settings/ui/widgets/pin_shape_indicator.dart';
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
-/// Полноэкранная блокировка. Назад выйти нельзя — только верный PIN
-/// или биометрия (если включена).
 class const AppLockPageAndr({super.key}) extends StatefulWidget {
   @override
   State<AppLockPageAndr> createState() => _AppLockPageAndrState();
 }
 
-class _AppLockPageAndrState extends State<AppLockPageAndr> {
+class _AppLockPageAndrState() extends State<AppLockPageAndr> {
   String _pin = '';
   String? _error;
   bool _checking = false;
@@ -107,24 +106,7 @@ class _AppLockPageAndrState extends State<AppLockPageAndr> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  spacing: 16,
-                  children: [
-                    for (var i = 0; i < 4; i++)
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 120),
-                        width: 16,
-                        height: 16,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: i < _pin.length
-                              ? scheme.primary
-                              : scheme.surfaceContainerHighest,
-                        ),
-                      ),
-                  ],
-                ),
+                PinShapeIndicator(filled: _pin.length),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -162,20 +144,15 @@ class _AppLockPageAndrState extends State<AppLockPageAndr> {
                           onPressed: _pin.isEmpty
                               ? null
                               : () => setState(
-                                  () => _pin = _pin.substring(
-                                    0,
-                                    _pin.length - 1,
-                                  ),
+                                  () =>
+                                      _pin = _pin.substring(0, _pin.length - 1),
                                 ),
                           child: const Icon(Icons.backspace_outlined),
                         )
                       else
                         M3EButton.tonal(
                           onPressed: _checking ? null : () => _onDigit(k),
-                          child: Text(
-                            k,
-                            style: textTheme.headlineMedium,
-                          ),
+                          child: Text(k, style: textTheme.headlineMedium),
                         ),
                   ],
                 ),

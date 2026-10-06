@@ -55,6 +55,11 @@ class const SettingsPageAndr({super.key}) extends StatelessWidget {
         leading: const Icon(Icons.notifications_rounded),
         onTap: () => context.push('/settings/notifications'),
       ),
+      M3EListItem(
+        headline: 'Данные и память',
+        leading: const Icon(Icons.storage_rounded),
+        onTap: () => context.push('/settings/storage'),
+      ),
     ];
 
     final List<M3EListItem> group3 = [

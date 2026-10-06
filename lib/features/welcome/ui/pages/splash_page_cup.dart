@@ -33,7 +33,7 @@ class _SplashPageCupState() extends State<SplashPageCup> {
       initKeyForwardListener();
       context.go(client.isLogged() ? '/chats' : '/welcome');
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось запустить приложение', e, s);
+      getIt<Talker>().error('[bootstrap] app launch failed', e, s);
       if (!mounted) return;
       setState(() => _failed = true);
     }

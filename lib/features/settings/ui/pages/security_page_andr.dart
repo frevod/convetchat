@@ -4,17 +4,13 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/security/app_lock_service.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
 import 'package:convetchat/features/settings/domain/repositories/security_repository.dart';
+import 'package:convetchat/features/settings/ui/share_keys_with_labels.dart';
 import 'package:convetchat/features/settings/ui/widgets/app_lock_pin_sheet.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:matrix/matrix.dart';
 import 'package:talker_flutter/talker_flutter.dart';
-
-enum _ShareKeysMode() {
-  all,
-  crossVerified,
-  verified,
-}
 
 class const SecurityPageAndr({super.key}) extends StatefulWidget {
   @override
@@ -27,8 +23,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
   bool _biometricsEnabled = false;
   bool _biometricsAvailable = false;
   bool _lockLoading = true;
-  _ShareKeysMode _shareMode = _ShareKeysMode.all;
-  bool _shareOnlineOnly = false;
+  ShareKeysWith? _shareMode;
 
   SecurityRepository get _security => getIt<SecurityRepository>();
 
@@ -37,6 +32,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
     super.initState();
     _checkBackup();
     _loadLock();
+    _loadShareMode();
   }
 
   Future<void> _checkBackup() async {
@@ -47,7 +43,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
         _backupReady = identity.initialized && identity.connected;
       });
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось проверить состояние крипты', e, s);
+      getIt<Talker>().error('[security] check backup state failed', e, s);
     }
   }
 
@@ -64,7 +60,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
         _lockLoading = false;
       });
     } catch (e, s) {
-      getIt<Talker>().error('[security] Не удалось прочитать блокировку', e, s);
+      getIt<Talker>().error('[security] read app lock failed', e, s);
       if (!mounted) return;
       setState(() => _lockLoading = false);
     }
@@ -121,7 +117,6 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
     );
   }
 
-  /// Подтверждение владения: биометрия (если включена и доступна) или PIN.
   Future<bool> _confirmOwnership() async {
     if (_biometricsEnabled && _biometricsAvailable) {
       final ok = await _security.authenticate(
@@ -178,11 +173,23 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
     );
   }
 
-  void _onShareModeChanged(List<M3EDropdownItem<_ShareKeysMode>> selected) {
+  Future<void> _loadShareMode() async {
+    try {
+      final mode = await _security.getShareKeysMode();
+      if (!mounted) return;
+      setState(() => _shareMode = mode);
+    } catch (e, s) {
+      getIt<Talker>().error('[security] read shareKeysWith failed', e, s);
+    }
+  }
+
+  Future<void> _onShareModeChanged(
+    List<M3EDropdownItem<ShareKeysWith>> selected,
+  ) async {
     if (selected.isEmpty) return;
-    setState(() {
-      _shareMode = selected.first.value;
-    });
+    final mode = selected.first.value;
+    setState(() => _shareMode = mode);
+    await _security.setShareKeysMode(mode);
   }
 
   @override
@@ -204,13 +211,8 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
       ),
       if (_appLockEnabled)
         M3EListItem(
-          trailing: M3ESwitch(
-            value: false,
-            onChanged: (_) => _onChangePin(),
-          ),
           leading: const Icon(Icons.pin_rounded),
-          headline: 'Код-пароль',
-          supportingText: 'Изменить код из 4 цифр',
+          headline: 'Изменить код-пароль',
           onTap: _onChangePin,
         ),
       if (_appLockEnabled && _biometricsAvailable)
@@ -224,15 +226,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
           onTap: () => _setBiometrics(!_biometricsEnabled),
         ),
     ];
-    final shareOnlineRow = M3EListItem(
-      trailing: M3ESwitch(
-        value: _shareOnlineOnly,
-        onChanged: (v) => setState(() => _shareOnlineOnly = v),
-      ),
-      leading: const Icon(Icons.cloud_done_rounded),
-      headline: 'Если онлайн',
-      onTap: () => setState(() => _shareOnlineOnly = !_shareOnlineOnly),
-    );
+    final shareMode = _shareMode;
     final shareRows = [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -244,38 +238,39 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
               children: [
                 const Icon(Icons.key_rounded),
                 Text(
-                  'Отправлять ключи',
+                  'Делиться ключами',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            M3EDropdownMenu<_ShareKeysMode>(
-              singleSelect: true,
-              showChipAnimation: false,
-              items: [
-                M3EDropdownItem(
-                  label: 'Всем устройствам',
-                  value: _ShareKeysMode.all,
-                  selected: _shareMode == _ShareKeysMode.all,
-                ),
-                M3EDropdownItem(
-                  label: 'Кросс-верифицированным',
-                  value: _ShareKeysMode.crossVerified,
-                  selected: _shareMode == _ShareKeysMode.crossVerified,
-                ),
-                M3EDropdownItem(
-                  label: 'Только проверенным',
-                  value: _ShareKeysMode.verified,
-                  selected: _shareMode == _ShareKeysMode.verified,
-                ),
-              ],
-              onSelectionChanged: _onShareModeChanged,
+            const SizedBox(height: 4),
+            Text(
+              'Каким устройствам можно доверять чтение ваших сообщений '
+              'в зашифрованных чатах?',
+              style: Theme.of(context).textTheme.bodyMedium,
             ),
+            const SizedBox(height: 12),
+            if (shareMode == null)
+              const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              M3EDropdownMenu<ShareKeysWith>(
+                singleSelect: true,
+                showChipAnimation: false,
+                items: [
+                  for (final mode in ShareKeysWith.values)
+                    M3EDropdownItem(
+                      label: mode.label,
+                      value: mode,
+                      selected: shareMode == mode,
+                    ),
+                ],
+                onSelectionChanged: _onShareModeChanged,
+              ),
           ],
         ),
       ),
-      if (_shareMode == _ShareKeysMode.crossVerified) shareOnlineRow,
     ];
     return Scaffold(
       appBar: M3EAppBar.top(
@@ -321,10 +316,6 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
 
           M3EList(
             itemCount: shareRows.length,
-            onTap: (index) {
-              final row = shareRows[index];
-              if (row is M3EListItem) row.onTap?.call();
-            },
             itemBuilder: (context, index) => shareRows[index],
           ),
         ],

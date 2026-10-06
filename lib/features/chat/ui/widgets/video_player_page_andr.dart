@@ -36,7 +36,7 @@ class _VideoPlayerPageAndrState() extends State<VideoPlayerPageAndr> {
       setState(() => _controller = controller);
       await controller.play();
     } catch (e, s) {
-      getIt<Talker>().error('Видео: не удалось воспроизвести', e, s);
+      getIt<Talker>().error('[chat] video playback failed', e, s);
       if (!mounted) return;
       setState(() => _error = '$e');
     }

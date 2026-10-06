@@ -41,7 +41,7 @@ class TelemetryService(final Talker _talker) {
       _consent = prefs.getBool(_consentKey) ?? false;
       await _applyConsent();
     } catch (e) {
-      _talker.error('[telemetry] init пропущен: $e');
+      _talker.error('[telemetry] init failed: $e');
     }
   }
 
@@ -59,7 +59,7 @@ class TelemetryService(final Talker _talker) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_consentKey, enabled);
     } catch (e) {
-      _talker.error('[telemetry] setConsent($enabled) упал', e);
+      _talker.error('[telemetry] setConsent($enabled) failed', e);
     }
   }
 
@@ -68,7 +68,7 @@ class TelemetryService(final Talker _talker) {
     try {
       _analyticsOrNull?.logEvent(name: name, parameters: parameters);
     } catch (e) {
-      _talker.error('[telemetry] logEvent($name) упал', e);
+      _talker.error('[telemetry] logEvent($name) failed', e);
     }
   }
 
@@ -84,7 +84,7 @@ class TelemetryService(final Talker _talker) {
         await crashlytics?.setUserIdentifier(userId);
       }
     } catch (e) {
-      _talker.error('[telemetry] setUserId упал', e);
+      _talker.error('[telemetry] setUserId failed', e);
     }
   }
 
@@ -93,7 +93,7 @@ class TelemetryService(final Talker _talker) {
     try {
       _crashlyticsOrNull?.recordError(error, stackTrace);
     } catch (e) {
-      _talker.error('[telemetry] logError упал', e);
+      _talker.error('[telemetry] logError failed', e);
     }
   }
 }

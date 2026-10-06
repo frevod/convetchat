@@ -20,7 +20,7 @@ void initIncomingVerificationListener() {
         getIt<GoRouter>().routerDelegate.navigatorKey.currentContext;
     if (context == null || !context.mounted) {
       getIt<Talker>().warning(
-        '[e2ee:incoming] Нет контекста для диалога — запрос пропущен: '
+        '[e2ee:incoming] skipped: no context for dialog, request missed: '
         'tx=${request.transactionId} state=${request.state.name}',
       );
       return;
@@ -32,7 +32,7 @@ void initIncomingVerificationListener() {
     try {
       await getIt<EncryptionRepository>().requestMissingSessions();
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось запросить ключи', e, s);
+      getIt<Talker>().error('[e2ee:incoming] requestMissingSessions failed', e, s);
     }
   });
 }

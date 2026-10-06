@@ -40,7 +40,7 @@ class RoomInfoCubit(
       if (isClosed) return;
       emit(state.copyWith(isLeaving: () => false, left: () => true));
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось покинуть комнату', e, s);
+      getIt<Talker>().error('[chat] leave room failed', e, s);
       if (isClosed) return;
       emit(
         state.copyWith(

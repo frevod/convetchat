@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:convetchat/core/logging/talker.dart';
+import 'package:convetchat/core/logging/talker_file_sink.dart';
 import 'package:convetchat/core/matrix/client_factory.dart';
 import 'package:convetchat/core/push/push_config.dart';
 import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
@@ -11,6 +12,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:matrix/matrix.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 enum PushHandleResult() {
@@ -36,6 +38,15 @@ const String _notificationGroup = 'convetchat';
 final int _summaryNotificationId = 'convetchat_summary'.hashCode;
 
 int roomNotificationId(String roomId) => roomId.hashCode;
+
+Future<bool> contentPreviewEnabled() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('notifications.contentPreview') ?? true;
+  } catch (_) {
+    return true;
+  }
+}
 
 const AndroidNotificationAction _markAsReadAction = AndroidNotificationAction(
   markAsReadActionId,
@@ -65,9 +76,6 @@ const AndroidNotificationAction _muteAction = AndroidNotificationAction(
 const List<AndroidNotificationAction> _messageActions =
     <AndroidNotificationAction>[_replyAction, _markAsReadAction, _muteAction];
 
-/// Имя порта главного изолята: если приложение живо, фоновый тап
-/// пересылается туда и выполняется уже прогретым клиентом с ключами,
-/// а не вторым клиентом с нуля (как у FluffyChat).
 const String pushActionPortName = 'convetchat_push_action_port';
 
 String serializeNotificationResponse(NotificationResponse response) =>
@@ -99,8 +107,6 @@ NotificationResponse? deserializeNotificationResponse(String raw) {
   }
 }
 
-/// Кнопки только для сообщений, как у FluffyChat: у инвайтов,
-/// звонков и прочих типов их нет (раньше висели всегда и везде).
 List<AndroidNotificationAction>? _actionsForEventType(String eventType) {
   switch (eventType) {
     case EventTypes.Message:
@@ -121,6 +127,7 @@ void registerPushBackgroundHandler() {
 
 @pragma('vm:entry-point')
 Future<void> onBackgroundMessage(RemoteMessage message) async {
+  DartPluginRegistrant.ensureInitialized();
   final data = message.data;
   final eventId = data['event_id'] as String?;
   final roomId = data['room_id'] as String?;
@@ -130,6 +137,9 @@ Future<void> onBackgroundMessage(RemoteMessage message) async {
   }
 
   final talker = createTalker();
+  try {
+    await TalkerFileSink.init();
+  } catch (_) {}
   final localNotifications = FlutterLocalNotificationsPlugin();
   await _init(localNotifications, talker);
 
@@ -149,11 +159,17 @@ Future<void> onBackgroundMessage(RemoteMessage message) async {
 
   Timer(_fallbackDelay, () {
     if (settled || fallbackShown) return;
-    talker.warning('[push:bg] Обогащение не успело — базовое уведомление');
+    talker.warning('[push:bg] enrich timeout, fallback notification required');
     unawaited(showFallback());
   });
 
   try {
+    if (!await contentPreviewEnabled()) {
+      talker.info('[push:bg] content preview off, generic notification');
+      settled = true;
+      await showFallback();
+      return;
+    }
     final result = await _enrich(
       roomId: roomId,
       eventId: eventId,
@@ -167,11 +183,11 @@ Future<void> onBackgroundMessage(RemoteMessage message) async {
   } on TimeoutException {
     settled = true;
     await showFallback();
-    talker.warning('[push:bg] Бюджет $_backgroundEnrichBudget исчерпан');
+    talker.warning('[push:bg] enrich budget exceeded ($_backgroundEnrichBudget)');
   } catch (e, s) {
     settled = true;
     await showFallback();
-    talker.error('[push:bg] Неожиданная ошибка', e, s);
+    talker.error('[push:bg] unhandled error', e, s);
   }
 }
 
@@ -185,9 +201,15 @@ Future<PushHandleResult> _enrich({
   try {
     client = await ClientFactory.createClient();
     if (!client.isLogged()) {
-      talker.warning('[push:bg] Клиент не залогинен, оставляем базовый пуш');
+      talker.warning('[push:bg] client not logged in, fallback required');
       return PushHandleResult.failed;
     }
+    client
+      ..backgroundSync = false
+      ..syncPresence = PresenceType.offline;
+    try {
+      await client.abortSync();
+    } catch (_) {}
 
     final result = await handlePushNotification(
       notification: PushNotification(eventId: eventId, roomId: roomId),
@@ -202,7 +224,7 @@ Future<PushHandleResult> _enrich({
     }
     return result;
   } catch (e, s) {
-    talker.error('[push:bg] Ошибка обогащения, оставляем базовый пуш', e, s);
+    talker.error('[push:bg] enrich failed', e, s);
     return PushHandleResult.failed;
   } finally {
     if (client != null) {
@@ -211,7 +233,7 @@ Future<PushHandleResult> _enrich({
           const Duration(seconds: 3),
         );
       } catch (e, s) {
-        talker.warning('[push:bg] Не удалось отпустить клиент', e, s);
+        talker.warning('[push:bg] client dispose failed', e, s);
       }
     }
   }
@@ -241,7 +263,7 @@ Future<PushHandleResult> handlePushNotification({
         )
         .timeout(lookupTimeout);
   } catch (e, s) {
-    talker.error('[push] Не удалось получить ивент $eventId', e, s);
+    talker.error('[push] getEvent failed eventId=$eventId', e, s);
     return PushHandleResult.failed;
   }
 
@@ -253,7 +275,7 @@ Future<PushHandleResult> handlePushNotification({
       return PushHandleResult.suppressed;
     }
   } catch (e, s) {
-    talker.warning('[push] Ошибка оценки push-правил', e, s);
+    talker.warning('[push] pushrule evaluation failed', e, s);
   }
 
   try {
@@ -287,7 +309,7 @@ Future<PushHandleResult> handlePushNotification({
     );
     return PushHandleResult.shown;
   } catch (e, s) {
-    talker.error('[push] Не удалось показать уведомление $eventId', e, s);
+    talker.error('[push] show notification failed eventId=$eventId', e, s);
     return PushHandleResult.failed;
   }
 }
@@ -329,20 +351,26 @@ Future<void> showFallbackNotification({
       talker: talker,
     );
   } catch (e, s) {
-    talker.error('[push] Упало даже базовое уведомление', e, s);
+    talker.error('[push] fallback notification failed', e, s);
   }
 }
 
 @pragma('vm:entry-point')
 Future<void> notificationTapBackground(NotificationResponse response) async {
+  DartPluginRegistrant.ensureInitialized();
+  final talker = createTalker();
+  try {
+    await TalkerFileSink.init();
+  } catch (_) {}
   final mainPort = IsolateNameServer.lookupPortByName(pushActionPortName);
   if (mainPort != null) {
     try {
       mainPort.send(serializeNotificationResponse(response));
-    } catch (_) {}
+    } catch (e, s) {
+      talker.error('[push:tap:bg] forward failed', e, s);
+    }
     return;
   }
-
   if (response.notificationResponseType !=
       NotificationResponseType.selectedNotificationAction) {
     return;
@@ -363,9 +391,11 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
   }
   final roomId = data?['roomId'] as String?;
   final eventId = data?['eventId'] as String?;
-  if (roomId == null) return;
+  if (roomId == null) {
+    talker.warning('[push:tap:bg] no roomId in payload');
+    return;
+  }
 
-  final talker = createTalker();
   final localNotifications = FlutterLocalNotificationsPlugin();
   await _init(localNotifications, talker);
 
@@ -375,26 +405,32 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
       const Duration(seconds: 20),
     );
     if (!client.isLogged()) {
-      talker.warning('[push:tap] Клиент не залогинен, действие $actionId');
+      talker.warning('[push:tap] action=$actionId skipped: client not logged in');
       return;
     }
+    client
+      ..backgroundSync = false
+      ..syncPresence = PresenceType.offline;
+    try {
+      await client.abortSync();
+    } catch (_) {}
     try {
       await client.roomsLoading?.timeout(const Duration(seconds: 15));
       await client.accountDataLoading?.timeout(const Duration(seconds: 15));
       await client.userDeviceKeysLoading?.timeout(const Duration(seconds: 15));
     } on TimeoutException catch (e, s) {
-      talker.warning('[push:tap] Не дождались загрузки базы', e, s);
+      talker.warning('[push:tap] rooms loading timeout', e, s);
     }
     final room = client.getRoomById(roomId);
     switch (actionId) {
       case replyActionId:
         final input = response.input?.trim();
         if (input == null || input.isEmpty) {
-          talker.warning('[push:tap] Ответ без текста, отправлять нечего');
+          talker.warning('[push:tap] reply skipped: empty input');
           break;
         }
         if (room == null) {
-          talker.warning('[push:tap] Нет комнаты $roomId, ответ не отправлен');
+          talker.warning('[push:tap] reply skipped: room not found roomId=$roomId');
           break;
         }
         await room
@@ -404,15 +440,20 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
               displayPendingEvent: false,
             )
             .timeout(const Duration(seconds: 20));
+        try {
+          await _markRead(client, room, roomId, eventId, talker);
+        } catch (e, s) {
+          talker.warning('[push:tap] read after reply failed', e, s);
+        }
       case muteActionId:
         await _muteRoom(client, room, roomId, talker);
       default:
         await _markRead(client, room, roomId, eventId, talker);
     }
   } on TimeoutException catch (e, s) {
-    talker.error('[push:tap] Таймаут действия $actionId', e, s);
+    talker.error('[push:tap] action timeout actionId=$actionId', e, s);
   } catch (e, s) {
-    talker.error('[push:tap] Не удалось обработать действие $actionId', e, s);
+    talker.error('[push:tap] action failed actionId=$actionId', e, s);
   } finally {
     if (client != null) {
       try {
@@ -430,11 +471,10 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
       talker: talker,
     );
   } catch (e, s) {
-    talker.warning('[push:tap] Не удалось снять уведомление', e, s);
+    talker.warning('[push:tap] dismiss notification failed', e, s);
   }
 }
 
-/// Мьют как у FluffyChat — mentionsOnly.
 Future<void> _muteRoom(
   Client client,
   Room? room,
@@ -443,18 +483,27 @@ Future<void> _muteRoom(
 ) async {
   if (room != null) {
     await room
-        .setPushRuleState(PushRuleState.mentionsOnly)
+        .setPushRuleState(PushRuleState.dontNotify)
         .timeout(const Duration(seconds: 10));
     return;
   }
-  talker.warning('[push:tap] Комната неизвестна, мьют напрямую');
+  talker.warning('[push:tap] room not found, applying direct pushrule mute roomId=$roomId');
   await client
-      .setPushRule(PushRuleKind.room, roomId, [])
+      .setPushRule(
+        PushRuleKind.override,
+        roomId,
+        [],
+        conditions: [
+          PushCondition(
+            kind: PushRuleConditions.eventMatch.name,
+            key: 'room_id',
+            pattern: roomId,
+          ),
+        ],
+      )
       .timeout(const Duration(seconds: 10));
 }
 
-/// Прочитанное через комнату (с публичным receipt, как у FluffyChat),
-/// fallback — напрямую через клиент.
 Future<void> _markRead(
   Client client,
   Room? room,
@@ -464,7 +513,7 @@ Future<void> _markRead(
 ) async {
   final targetEventId = eventId ?? room?.lastEvent?.eventId;
   if (targetEventId == null) {
-    talker.warning('[push:tap] Нечего отмечать прочитанным в $roomId');
+    talker.warning('[push:tap] markRead skipped: no target event roomId=$roomId');
     return;
   }
   try {
@@ -475,7 +524,7 @@ Future<void> _markRead(
       return;
     }
   } catch (e, s) {
-    talker.warning('[push:tap] Read-marker через Room не удался', e, s);
+    talker.warning('[push:tap] room.setReadMarker failed, using client fallback', e, s);
   }
   await client
       .setReadMarker(roomId, mFullyRead: targetEventId, mRead: targetEventId)
@@ -490,7 +539,7 @@ Future<void> _cancelRoom(
   try {
     await localNotifications.cancel(id: roomNotificationId(roomId));
   } catch (e, s) {
-    talker.warning('[push] Не удалось снять уведомление комнаты', e, s);
+    talker.warning('[push] cancel room notification failed', e, s);
   }
 }
 
@@ -521,7 +570,7 @@ Future<void> dismissRoomNotification({
       talker: talker,
     );
   } catch (e, s) {
-    talker.warning('[push] Не удалось снять уведомление комнаты', e, s);
+    talker.warning('[push] cancel room notification failed', e, s);
   }
 }
 
@@ -531,6 +580,7 @@ Future<void> _updateSummary({
 }) async {
   if (kIsWeb || !Platform.isAndroid) return;
   try {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     final rooms = (await localNotifications.getActiveNotifications())
         .where((n) => n.groupKey == _notificationGroup)
         .where((n) => n.id != _summaryNotificationId)
@@ -560,7 +610,7 @@ Future<void> _updateSummary({
       ),
     );
   } catch (e, s) {
-    talker.warning('[push] Не удалось обновить сводное уведомление', e, s);
+    talker.warning('[push] update summary notification failed', e, s);
   }
 }
 
@@ -593,7 +643,7 @@ Future<void> _init(
     }
   } catch (e, s) {
     talker.error(
-      '[push] Не удалось инициализировать локальные уведомления',
+      '[push] local notifications init failed',
       e,
       s,
     );
@@ -658,7 +708,7 @@ Future<NotificationDetails> _detailsForEvent({
         ?.getActiveNotificationMessagingStyle(id: roomNotificationId(roomId));
     style?.messages?.add(newMessage);
   } catch (e, s) {
-    talker.warning('[push] Не удалось получить стиль переписки', e, s);
+    talker.warning('[push] get messaging style failed', e, s);
     style = null;
   }
 

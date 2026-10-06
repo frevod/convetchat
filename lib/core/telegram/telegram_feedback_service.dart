@@ -82,7 +82,7 @@ final class TelegramFeedbackService(final Talker _talker) {
       _talker.error('[feedback] Telegram ${e.code}: ${e.description}', e);
       return (ok: false, error: e.description ?? 'Ошибка ${e.code}');
     } catch (e, s) {
-      _talker.error('[feedback] Ошибка отправки сообщения', e, s);
+      _talker.error('[feedback] sendBugReport failed', e, s);
       return (ok: false, error: 'Нет соединения');
     }
   }

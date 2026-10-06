@@ -5,6 +5,9 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
+import 'package:convetchat/core/storage/media_disk_cache.dart';
+import 'package:convetchat/core/storage/storage_quota_store.dart';
+import 'package:convetchat/core/utils/image_thumb.dart';
 import 'package:convetchat/core/platform_info.dart';
 import 'package:convetchat/core/platform_style.dart';
 import 'package:convetchat/core/push/push_service.dart';
@@ -32,6 +35,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:record/record.dart';
 import 'package:talker_flutter/talker_flutter.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
 class ChatCubit(
   final ChatRepository _repository, {
@@ -127,7 +131,7 @@ class ChatCubit(
         ),
       );
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось прочитать настройки ввода', e, s);
+      getIt<Talker>().error('[chat] load input settings failed', e, s);
     }
   }
 
@@ -283,7 +287,7 @@ class ChatCubit(
         );
       } catch (e, s) {
         if (isClosed) return;
-        getIt<Talker>().error('Не удалось изменить сообщение', e, s);
+        getIt<Talker>().error('[chat] edit message failed', e, s);
         emit(
           state.copyWith(
             errorMessage: () => 'Не удалось изменить. Попробуйте снова',
@@ -310,7 +314,7 @@ class ChatCubit(
         );
       } catch (e, s) {
         if (isClosed) return;
-        getIt<Talker>().error('Не удалось отправить сообщение', e, s);
+        getIt<Talker>().error('[chat] send message failed', e, s);
         emit(
           state.copyWith(
             errorMessage: () => 'Не удалось отправить. Попробуйте снова',
@@ -364,7 +368,7 @@ class ChatCubit(
           failed++;
           if (e is MatrixCallFailure) reason ??= e;
           getIt<Talker>().error(
-            'Не удалось отправить медиа${e is MatrixCallFailure ? ': $e' : ''}',
+            '[chat] send media failed${e is MatrixCallFailure ? ': $e' : ''}',
             e,
             s,
           );
@@ -419,7 +423,7 @@ class ChatCubit(
           ),
         );
       } catch (e, s) {
-        getIt<Talker>().error('Не удалось подготовить медиа', e, s);
+        getIt<Talker>().error('[chat] prepare media failed', e, s);
       }
     }
     if (isClosed || items.isEmpty) return;
@@ -484,11 +488,12 @@ class ChatCubit(
         if (_imageExtensions.contains(ext)) {
           try {
             final bytes = await file.readAsBytes();
-            final image = await decodeImageFromList(bytes);
-            width = image.width;
-            height = image.height;
-            image.dispose();
-            thumb = bytes;
+            final small = makeImageThumb(bytes);
+            if (small != null) {
+              thumb = small.bytes;
+              width = small.width;
+              height = small.height;
+            }
           } catch (_) {}
         }
         final side = _thumbSide(width ?? 0, height ?? 0);
@@ -507,7 +512,7 @@ class ChatCubit(
           ),
         );
       } catch (e, s) {
-        getIt<Talker>().error('Не удалось подготовить файл', e, s);
+        getIt<Talker>().error('[chat] prepare file failed', e, s);
       }
     }
     if (isClosed || items.isEmpty) return;
@@ -532,7 +537,7 @@ class ChatCubit(
       await _repository.cancelSend(roomId: _roomId, eventId: message.id);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось отменить отправку', e, s);
+      getIt<Talker>().error('[chat] cancel send failed', e, s);
       emit(state.copyWith(errorMessage: () => 'Не удалось убрать'));
     }
   }
@@ -543,7 +548,7 @@ class ChatCubit(
       await _repository.retrySend(roomId: _roomId, eventId: message.id);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось повторить отправку', e, s);
+      getIt<Talker>().error('[chat] retry send failed', e, s);
       emit(
         state.copyWith(
           errorMessage: () => 'Не удалось отправить. Попробуйте снова',
@@ -593,7 +598,7 @@ class ChatCubit(
         }
       }
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось продолжить воспроизведение', e, s);
+      getIt<Talker>().error('[chat] autoplay next failed', e, s);
     }
   }
 
@@ -658,13 +663,25 @@ class ChatCubit(
       eventId: eventId,
       thumb: thumb,
     );
-    if (!isClosed) {
+    if (!isClosed && thumb) {
       if (_mediaCache.length >= _mediaCacheCap) {
         _mediaCache.remove(_mediaCache.keys.first);
       }
       _mediaCache[key] = bytes;
     }
     return bytes;
+  }
+
+  Future<bool> isFullCached(String eventId) async {
+    try {
+      return await _repository.isMediaCached(
+        roomId: _roomId,
+        eventId: eventId,
+        thumb: false,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<File> videoFile({
@@ -674,15 +691,16 @@ class ChatCubit(
   }) async {
     final bytes = await mediaBytes(eventId: eventId, thumb: false);
     if (bytes.isEmpty) throw Exception('Файл видео пустой');
-    final dir = Directory(
-      path_lib.join((await getTemporaryDirectory()).path, 'video_cache'),
-    );
-    if (!await dir.exists()) await dir.create(recursive: true);
+    final dir = await getIt<MediaDiskCache>().directory();
     final file = File(
-      path_lib.join(dir.path, _videoFileName(eventId, fileName, mimeType)),
+      '${dir.path}${Platform.pathSeparator}${_videoFileName(eventId, fileName, mimeType)}',
     );
     if (!await file.exists() || await file.length() != bytes.length) {
       await file.writeAsBytes(bytes, flush: true);
+      try {
+        final quota = await getIt<StorageQuotaStore>().getMaxBytes();
+        await getIt<MediaDiskCache>().enforceQuota(quota);
+      } catch (_) {}
     }
     return file;
   }
@@ -720,7 +738,7 @@ class ChatCubit(
     try {
       await getIt<PushService>().dismissForRoom(_roomId);
     } catch (e) {
-      getIt<Talker>().warning('[push] Не удалось снять уведомление', e);
+      getIt<Talker>().warning('[push] dismiss notification failed', e);
     }
   }
 
@@ -730,7 +748,7 @@ class ChatCubit(
     try {
       await _repository.loadMore(_roomId);
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось загрузить историю', e, s);
+      getIt<Talker>().error('[chat] load history failed', e, s);
     } finally {
       if (!isClosed) emit(state.copyWith(isLoadingMore: () => false));
     }
@@ -745,12 +763,12 @@ class ChatCubit(
         try {
           await getIt<EncryptionRepository>().requestMissingSessions();
         } catch (e, s) {
-          getIt<Talker>().error('Не удалось запросить ключи', e, s);
+          getIt<Talker>().error('[e2ee] request keys failed', e, s);
         }
       }
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось начать проверку', e, s);
+      getIt<Talker>().error('[chat] start verification failed', e, s);
       emit(state.copyWith(errorMessage: () => 'Не удалось начать проверку'));
     }
   }
@@ -872,7 +890,7 @@ class ChatCubit(
       );
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('[chat] Не удалось поставить реакцию', e, s);
+      getIt<Talker>().error('[chat] toggle reaction failed', e, s);
       emit(state.copyWith(errorMessage: () => 'Не удалось поставить реакцию'));
     }
   }
@@ -906,7 +924,7 @@ class ChatCubit(
     try {
       await _repository.redactMessage(roomId: _roomId, eventId: message.id);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось удалить сообщение', e, s);
+      getIt<Talker>().error('[chat] delete message failed', e, s);
       emit(state.copyWith(errorMessage: () => 'Не удалось удалить сообщение'));
     }
   }
@@ -917,7 +935,7 @@ class ChatCubit(
         await _repository.redactMessage(roomId: _roomId, eventId: message.id);
       } catch (e, s) {
         if (isClosed) return;
-        getIt<Talker>().error('[chat] Не удалось удалить сообщение', e, s);
+        getIt<Talker>().error('[chat] delete message failed', e, s);
         emit(
           state.copyWith(errorMessage: () => 'Не удалось удалить сообщение'),
         );
@@ -983,7 +1001,7 @@ class ChatCubit(
       await _repository.pinMessage(roomId: _roomId, eventId: message.id);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('[chat] Не удалось закрепить сообщение', e, s);
+      getIt<Talker>().error('[chat] pin message failed', e, s);
       emit(
         state.copyWith(
           pinnedEventIds: () => previous,
@@ -1014,7 +1032,7 @@ class ChatCubit(
       await _repository.unpinMessage(roomId: _roomId);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('[chat] Не удалось открепить сообщение', e, s);
+      getIt<Talker>().error('[chat] unpin message failed', e, s);
       emit(
         state.copyWith(
           pinnedEventIds: () => previous,
@@ -1109,7 +1127,7 @@ class ChatCubit(
       }
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось включить камеру', e, s);
+      getIt<Talker>().error('[chat] start camera preview failed', e, s);
       emit(state.copyWith(errorMessage: () => 'Не удалось включить камеру'));
     }
   }
@@ -1181,7 +1199,7 @@ class ChatCubit(
       );
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось начать запись кружка', e, s);
+      getIt<Talker>().error('[chat] start circle recording failed', e, s);
       if (generation == _recordGeneration) _resetRecordFlags();
       emit(state.copyWith(errorMessage: () => 'Не удалось начать запись'));
     }
@@ -1278,7 +1296,7 @@ class ChatCubit(
     } catch (e, s) {
       await recorder.dispose();
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось начать запись', e, s);
+      getIt<Talker>().error('[chat] start voice recording failed', e, s);
       emit(state.copyWith(errorMessage: () => 'Не удалось начать запись'));
     }
   }
@@ -1363,6 +1381,7 @@ class ChatCubit(
         return;
       }
       try {
+        final thumb = await _circleThumb(file.path);
         await _repository.sendMedia(
           roomId: _roomId,
           filePath: file.path,
@@ -1370,6 +1389,9 @@ class ChatCubit(
           isVideo: true,
           isCircle: true,
           durationMs: elapsed.inMilliseconds,
+          thumbBytes: thumb?.bytes,
+          thumbWidth: thumb?.width,
+          thumbHeight: thumb?.height,
           inReplyToEventId: replyToEventId,
         );
       } finally {
@@ -1377,8 +1399,24 @@ class ChatCubit(
       }
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось отправить кружок', e, s);
+      getIt<Talker>().error('[chat] send circle video failed', e, s);
       emit(state.copyWith(errorMessage: () => 'Не удалось отправить кружок'));
+    }
+  }
+
+  static Future<({Uint8List bytes, int width, int height})?>
+  _circleThumb(String path) async {
+    try {
+      final frame = await vt.VideoThumbnail.thumbnailData(
+        video: path,
+        imageFormat: vt.ImageFormat.JPEG,
+        maxWidth: 320,
+        quality: 75,
+      );
+      if (frame == null || frame.isEmpty) return null;
+      return makeImageThumb(frame);
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1433,7 +1471,7 @@ class ChatCubit(
       );
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось отправить голосовое', e, s);
+      getIt<Talker>().error('[chat] send voice message failed', e, s);
       emit(
         state.copyWith(errorMessage: () => 'Не удалось отправить голосовое'),
       );

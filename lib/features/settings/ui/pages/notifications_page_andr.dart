@@ -1,5 +1,7 @@
+import 'package:convetchat/app/adaptive/adaptive_dialog.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -9,32 +11,6 @@ class const NotificationsPageAndr({super.key}) extends StatefulWidget {
 }
 
 class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
-  bool _peopleEnabled = true;
-  bool _groupsEnabled = true;
-  bool _mentionsEnabled = true;
-  bool _reactionsEnabled = true;
-  bool _invitesEnabled = true;
-
-  bool _extraEnabled(int index) {
-    return switch (index) {
-      0 => _mentionsEnabled,
-      1 => _reactionsEnabled,
-      _ => _invitesEnabled,
-    };
-  }
-
-  void _setExtraEnabled(int index, bool value) {
-    setState(() {
-      switch (index) {
-        case 0:
-          _mentionsEnabled = value;
-        case 1:
-          _reactionsEnabled = value;
-        default:
-          _invitesEnabled = value;
-      }
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -72,55 +48,115 @@ class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
           ),
           const SizedBox(height: 12),
           M3EList(
-            itemCount: 2,
+            itemCount: 1,
             onTap: (index) {
-              setState(() {
-                if (index == 0) {
-                  _peopleEnabled = !_peopleEnabled;
-                } else {
-                  _groupsEnabled = !_groupsEnabled;
-                }
-              });
+              cubit.toggleContentPreview(!state.contentPreview);
             },
             itemBuilder: (context, index) {
-              final enabled = index == 0 ? _peopleEnabled : _groupsEnabled;
               return M3EListItem(
-                leading: Icon(
-                  index == 0 ? Icons.person_rounded : Icons.group_rounded,
-                ),
-                headline: index == 0 ? 'Люди' : 'Группы',
-                trailing: M3ESwitch(
-                  value: enabled,
-                  onChanged: (v) => setState(() {
-                    if (index == 0) {
-                      _peopleEnabled = v;
-                    } else {
-                      _groupsEnabled = v;
-                    }
-                  }),
+                leading: const Icon(Icons.preview_rounded),
+                headline: 'Предпросмотр контента',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      height: 32,
+                      child: VerticalDivider(width: 1),
+                    ),
+                    M3ESwitch(
+                      value: state.contentPreview,
+                      onChanged: cubit.toggleContentPreview,
+                    ),
+                    M3EIconButton(
+                      icon: const Icon(Icons.help_outline_rounded),
+                      tooltip: 'Подробнее',
+                      onPressed: () => AdaptiveDialog.show(
+                        context: context,
+                        title: 'Предпросмотр контента',
+                        subtitle:
+                            'Когда этот параметр включен, при входящем сообщении ConvetChat пытается локально расшифровать сообщение. Однако расшифровка отправляет в онлайн и это вынужденная мера. Если же выключено или расшифровать не удастся, то уведомление будет содержать просто информацию о том, что у вас новое сообщение',
+                        actions: const [
+                          AdaptiveDialogAction(
+                            label: 'Понятно',
+                            isPrimary: true,
+                            result: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
           ),
           const SizedBox(height: 12),
           M3EList(
-            itemCount: 3,
-            onTap: (index) => _setExtraEnabled(index, !_extraEnabled(index)),
+            itemCount: 2,
+            onTap: (index) {
+              final people = index == 0;
+              context.push(
+                '/settings/notifications/exceptions?type=${people ? 'people' : 'groups'}',
+                extra: cubit,
+              );
+            },
             itemBuilder: (context, index) {
+              final people = index == 0;
+              final enabled = people
+                  ? state.peopleEnabled
+                  : state.groupsEnabled;
               return M3EListItem(
-                leading: Icon(switch (index) {
-                  0 => Icons.alternate_email_rounded,
-                  1 => Icons.add_reaction_rounded,
-                  _ => Icons.person_add_rounded,
-                }),
-                headline: switch (index) {
-                  0 => 'Упоминания',
-                  1 => 'Реакции',
-                  _ => 'Приглашения',
-                },
+                leading: Icon(
+                  people ? Icons.person_rounded : Icons.group_rounded,
+                ),
+                headline: people ? 'Люди' : 'Группы',
+                supportingText: 'Нажмите для управления исключениями',
+                trailing: Row(
+                  spacing: 5,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      height: 32,
+                      child: VerticalDivider(width: 3),
+                    ),
+
+                    M3ESwitch(
+                      value: enabled,
+                      onChanged: people
+                          ? cubit.togglePeopleCategory
+                          : cubit.toggleGroupsCategory,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          M3EList(
+            itemCount: 2,
+            onTap: (index) {
+              if (index == 0) {
+                cubit.toggleReactions(!state.reactionsEnabled);
+              } else {
+                cubit.toggleInvites(!state.invitesEnabled);
+              }
+            },
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return M3EListItem(
+                  leading: const Icon(Icons.add_reaction_rounded),
+                  headline: 'Реакции',
+                  trailing: M3ESwitch(
+                    value: state.reactionsEnabled,
+                    onChanged: cubit.toggleReactions,
+                  ),
+                );
+              }
+              return M3EListItem(
+                leading: const Icon(Icons.person_add_rounded),
+                headline: 'Приглашения',
                 trailing: M3ESwitch(
-                  value: _extraEnabled(index),
-                  onChanged: (v) => _setExtraEnabled(index, v),
+                  value: state.invitesEnabled,
+                  onChanged: cubit.toggleInvites,
                 ),
               );
             },

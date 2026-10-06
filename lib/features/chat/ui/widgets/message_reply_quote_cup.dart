@@ -1,3 +1,4 @@
+import 'package:convetchat/core/widgets/interaction_guard.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 
 class const MessageReplyQuoteCup({
@@ -18,7 +19,10 @@ class const MessageReplyQuoteCup({
         : CupertinoColors.label.resolveFrom(context);
     return GestureDetector(
       behavior: .opaque,
-      onTap: onTap,
+      onTap: () {
+        InteractionGuard.mark();
+        onTap();
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

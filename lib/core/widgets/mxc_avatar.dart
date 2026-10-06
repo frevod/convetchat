@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/platform_style.dart';
+import 'package:convetchat/core/storage/media_disk_cache.dart';
+import 'package:convetchat/core/storage/storage_quota_store.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:http/http.dart' as http;
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:matrix/matrix.dart';
@@ -33,52 +38,73 @@ class const _MxcAvatarView({
 }
 
 class _MxcAvatarViewState() extends State<_MxcAvatarView> {
-  late Future<Uri> _thumbnail;
+  late Future<Uint8List?> _bytes;
 
   @override
   void initState() {
     super.initState();
-    _thumbnail = _resolve();
+    _bytes = _load();
   }
 
   @override
   void didUpdateWidget(_MxcAvatarView old) {
     super.didUpdateWidget(old);
     if (old.mxc == widget.mxc && old.size == widget.size) return;
-    _thumbnail = _resolve();
+    _bytes = _load();
   }
 
-  Future<Uri> _resolve() {
+  String get _cacheKey =>
+      'avatar:${widget.mxc}:${widget.size.toInt()}x${widget.size.toInt()}';
+
+  Future<Uint8List?> _load() async {
     final mxc = widget.mxc;
-    if (mxc == null || mxc.isEmpty) return Future.value(Uri());
-    return Uri.parse(mxc).getThumbnailUri(
-      getIt<Client>(),
-      width: widget.size * 3,
-      height: widget.size * 3,
-    );
-  }
-
-  Map<String, String>? _authHeaders() {
-    final token = getIt<Client>().accessToken;
-    if (token == null) return null;
-    return {'authorization': 'Bearer $token'};
+    if (mxc == null || mxc.isEmpty) return null;
+    try {
+      final disk = await getIt<MediaDiskCache>().getBytes(_cacheKey);
+      if (disk != null) return disk;
+    } catch (_) {}
+    try {
+      final uri = await Uri.parse(mxc).getThumbnailUri(
+        getIt<Client>(),
+        width: widget.size * 3,
+        height: widget.size * 3,
+      );
+      final token = getIt<Client>().accessToken;
+      final response = await http.get(
+        uri,
+        headers: token == null ? null : {'authorization': 'Bearer $token'},
+      );
+      if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
+      final bytes = response.bodyBytes;
+      try {
+        final quota = await getIt<StorageQuotaStore>().getMaxBytes();
+        await getIt<MediaDiskCache>().putBytes(
+          _cacheKey,
+          bytes,
+          maxBytes: quota,
+        );
+      } catch (_) {}
+      return bytes;
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final isCupertino = getIt<PlatformStyle>().isCupertino;
-    return FutureBuilder<Uri>(
-      future: _thumbnail,
+    return FutureBuilder<Uint8List?>(
+      future: _bytes,
       builder: (context, snapshot) {
-        final uri = snapshot.data;
-        if (uri != null && uri.toString().isNotEmpty) {
+        final bytes = snapshot.data;
+        if (bytes != null && bytes.isNotEmpty) {
           return ClipOval(
-            child: Image.network(
-              uri.toString(),
-              headers: _authHeaders(),
+            child: Image.memory(
+              bytes,
               width: widget.size,
               height: widget.size,
               fit: .cover,
+              gaplessPlayback: true,
               errorBuilder: (context, _, _) => _fallback(context),
             ),
           );

@@ -1,3 +1,4 @@
+import 'package:convetchat/features/chats/domain/entities/chat_room.dart';
 import 'package:equatable/equatable.dart';
 
 class const SettingsState({
@@ -18,6 +19,18 @@ class const SettingsState({
 
   final bool notificationsEnabled = true,
 
+  final bool peopleEnabled = true,
+
+  final bool groupsEnabled = true,
+
+  final bool reactionsEnabled = false,
+
+  final bool invitesEnabled = true,
+
+  final bool contentPreview = true,
+
+  final List<ChatRoom> notificationRooms = const [],
+
   final bool profileSaving = false,
 
   final bool? dehydratedDevicesEnabled,
@@ -32,6 +45,12 @@ class const SettingsState({
     String? Function()? userId,
     String? Function()? errorMessage,
     bool Function()? notificationsEnabled,
+    bool Function()? peopleEnabled,
+    bool Function()? groupsEnabled,
+    bool Function()? reactionsEnabled,
+    bool Function()? invitesEnabled,
+    bool Function()? contentPreview,
+    List<ChatRoom> Function()? notificationRooms,
     bool Function()? profileSaving,
     bool Function()? dehydratedDevicesEnabled,
   }) {
@@ -49,6 +68,24 @@ class const SettingsState({
       notificationsEnabled: notificationsEnabled != null
           ? notificationsEnabled()
           : this.notificationsEnabled,
+      reactionsEnabled: reactionsEnabled != null
+          ? reactionsEnabled()
+          : this.reactionsEnabled,
+      invitesEnabled: invitesEnabled != null
+          ? invitesEnabled()
+          : this.invitesEnabled,
+      contentPreview: contentPreview != null
+          ? contentPreview()
+          : this.contentPreview,
+      peopleEnabled: peopleEnabled != null
+          ? peopleEnabled()
+          : this.peopleEnabled,
+      groupsEnabled: groupsEnabled != null
+          ? groupsEnabled()
+          : this.groupsEnabled,
+      notificationRooms: notificationRooms != null
+          ? notificationRooms()
+          : this.notificationRooms,
       profileSaving: profileSaving != null
           ? profileSaving()
           : this.profileSaving,
@@ -69,6 +106,12 @@ class const SettingsState({
     userId,
     errorMessage,
     notificationsEnabled,
+    reactionsEnabled,
+    invitesEnabled,
+    contentPreview,
+    peopleEnabled,
+    groupsEnabled,
+    notificationRooms,
     profileSaving,
     dehydratedDevicesEnabled,
   ];

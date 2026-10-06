@@ -5,12 +5,12 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/security/app_lock_service.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
 import 'package:convetchat/features/settings/domain/repositories/security_repository.dart';
+import 'package:convetchat/features/settings/ui/share_keys_with_labels.dart';
 import 'package:convetchat/features/settings/ui/widgets/app_lock_pin_sheet.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:go_router/go_router.dart';
+import 'package:matrix/matrix.dart';
 import 'package:talker_flutter/talker_flutter.dart';
-
-enum _ShareKeysMode() { all, crossVerified, verified }
 
 class const SecurityPageCup({super.key}) extends StatefulWidget {
   @override
@@ -23,8 +23,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
   bool _biometricsEnabled = false;
   bool _biometricsAvailable = false;
   bool _lockLoading = true;
-  _ShareKeysMode _shareMode = _ShareKeysMode.all;
-  bool _shareOnlineOnly = false;
+  ShareKeysWith? _shareMode;
 
   SecurityRepository get _security => getIt<SecurityRepository>();
 
@@ -33,6 +32,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
     super.initState();
     _checkBackup();
     _loadLock();
+    _loadShareMode();
   }
 
   Future<void> _checkBackup() async {
@@ -43,7 +43,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
         _backupReady = identity.initialized && identity.connected;
       });
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось проверить состояние крипты', e, s);
+      getIt<Talker>().error('[security] check backup state failed', e, s);
     }
   }
 
@@ -60,7 +60,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
         _lockLoading = false;
       });
     } catch (e, s) {
-      getIt<Talker>().error('[security] Не удалось прочитать блокировку', e, s);
+      getIt<Talker>().error('[security] read app lock failed', e, s);
       if (!mounted) return;
       setState(() => _lockLoading = false);
     }
@@ -184,17 +184,29 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
     );
   }
 
-  CupertinoListTile _shareModeTile(
-    String title,
-    _ShareKeysMode mode,
-    IconData icon,
-  ) {
+  Future<void> _loadShareMode() async {
+    try {
+      final mode = await _security.getShareKeysMode();
+      if (!mounted) return;
+      setState(() => _shareMode = mode);
+    } catch (e, s) {
+      getIt<Talker>().error('[security] read shareKeysWith failed', e, s);
+    }
+  }
+
+  Future<void> _setShareMode(ShareKeysWith mode) async {
+    setState(() => _shareMode = mode);
+    await _security.setShareKeysMode(mode);
+  }
+
+  CupertinoListTile _shareModeTile(ShareKeysWith mode, IconData icon) {
     final selected = _shareMode == mode;
     return CupertinoListTile(
       leading: Icon(icon),
-      title: Text(title),
+      title: Text(mode.label),
+      subtitle: Text(mode.description),
       trailing: selected ? const Icon(CupertinoIcons.check_mark) : null,
-      onTap: () => setState(() => _shareMode = mode),
+      onTap: () => unawaited(_setShareMode(mode)),
     );
   }
 
@@ -276,35 +288,33 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
             CupertinoListSection.insetGrouped(
               backgroundColor: CupertinoColors.transparent,
               header: const Text('Делиться ключами'),
+              footer: const Text(
+                'Каким устройствам можно доверять чтение ваших сообщений '
+                'в зашифрованных чатах?',
+              ),
               children: [
-                _shareModeTile(
-                  'Все устройства',
-                  _ShareKeysMode.all,
-                  CupertinoIcons.device_phone_portrait,
-                ),
-                _shareModeTile(
-                  'Кросс-верифицированные устройства',
-                  _ShareKeysMode.crossVerified,
-                  CupertinoIcons.checkmark_shield_fill,
-                ),
-                _shareModeTile(
-                  'Только проверенные устройства',
-                  _ShareKeysMode.verified,
-                  CupertinoIcons.shield_fill,
-                ),
-                if (_shareMode == _ShareKeysMode.crossVerified)
-                  CupertinoListTile(
-                    leading: const Icon(CupertinoIcons.cloud_fill),
-                    title: const Text('Если онлайн'),
-                    trailing: CupertinoSwitch(
-                      value: _shareOnlineOnly,
-                      onChanged: (v) =>
-                          setState(() => _shareOnlineOnly = v),
-                    ),
-                    onTap: () => setState(
-                      () => _shareOnlineOnly = !_shareOnlineOnly,
-                    ),
+                if (_shareMode == null)
+                  const CupertinoListTile(
+                    title: Text('Загрузка…'),
+                  )
+                else ...[
+                  _shareModeTile(
+                    ShareKeysWith.all,
+                    CupertinoIcons.device_phone_portrait,
                   ),
+                  _shareModeTile(
+                    ShareKeysWith.crossVerifiedIfEnabled,
+                    CupertinoIcons.checkmark_shield_fill,
+                  ),
+                  _shareModeTile(
+                    ShareKeysWith.crossVerified,
+                    CupertinoIcons.shield_fill,
+                  ),
+                  _shareModeTile(
+                    ShareKeysWith.directlyVerifiedOnly,
+                    CupertinoIcons.lock_shield,
+                  ),
+                ],
               ],
             ),
           ],

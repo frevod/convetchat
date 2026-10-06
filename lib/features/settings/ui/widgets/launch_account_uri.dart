@@ -13,7 +13,7 @@ Future<bool> launchAccountUri(Uri uri) async {
   final opened = await launchUrl(uri, mode: accountLaunchMode);
   if (!opened) {
     getIt<Talker>().warning(
-      '[settings] Не удалось открыть панель аккаунта: $uri '
+      '[settings] open account panel failed: $uri '
       '(mode=$accountLaunchMode)',
     );
   }
@@ -30,7 +30,7 @@ Future<Uri?> fetchAccountManagementUri() async {
   try {
     return (await getIt<Client>().getAuthMetadata()).accountManagementUri;
   } catch (e) {
-    getIt<Talker>().warning('[settings] MAS не отдал адрес панели: $e');
+    getIt<Talker>().warning('[settings] load account management URI failed: $e');
     return null;
   }
 }
