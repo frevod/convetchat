@@ -6,20 +6,18 @@ import 'package:convetchat/features/settings/domain/repositories/security_reposi
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:matrix/matrix.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
-class SecurityRepositoryImpl implements SecurityRepository {
-  SecurityRepositoryImpl({LocalAuthentication? auth})
-    : _auth = auth ?? LocalAuthentication();
+class SecurityRepositoryImpl({LocalAuthentication? auth})
+    implements SecurityRepository {
+  this : _auth = auth ?? LocalAuthentication();
 
   static const _appLockKey = 'security_app_lock_enabled';
   static const _biometricsKey = 'security_biometrics_enabled';
+  static const _shareKeysWithKey = 'security_share_keys_with';
 
-  /// Храним НЕ сам PIN, а `salt:sha256(salt:pin)`.
-  /// `flutter_secure_storage` уже шифруется ОС (Keychain/Keystore),
-  /// но хеш защищает от чтения PIN даже при дампе хранилища.
-  /// Соль — 16 случайных байт в base64, своя для каждого PIN.
   static const _pinHashStorageKey = 'security_app_pin_hash';
   static const _legacyPinStorageKey = 'security_app_pin';
 
@@ -73,7 +71,7 @@ class SecurityRepositoryImpl implements SecurityRepository {
     try {
       await (await _prefs()).setBool(_appLockKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[security] Не удалось сохранить app lock', e, s);
+      getIt<Talker>().error('[security] save app lock failed', e, s);
     }
     if (!enabled) {
       await setBiometricsEnabled(false);
@@ -105,7 +103,7 @@ class SecurityRepositoryImpl implements SecurityRepository {
       );
       await _secureStorage.delete(key: _legacyPinStorageKey);
     } catch (e, s) {
-      getIt<Talker>().error('[security] Не удалось сохранить PIN', e, s);
+      getIt<Talker>().error('[security] save PIN failed', e, s);
       rethrow;
     }
   }
@@ -132,7 +130,7 @@ class SecurityRepositoryImpl implements SecurityRepository {
           );
           await _secureStorage.delete(key: _legacyPinStorageKey);
         } catch (e, s) {
-          getIt<Talker>().error('[security] Не удалось мигрировать PIN', e, s);
+          getIt<Talker>().error('[security] migrate PIN failed', e, s);
         }
       }
       return ok;
@@ -147,7 +145,7 @@ class SecurityRepositoryImpl implements SecurityRepository {
       await _secureStorage.delete(key: _pinHashStorageKey);
       await _secureStorage.delete(key: _legacyPinStorageKey);
     } catch (e, s) {
-      getIt<Talker>().error('[security] Не удалось удалить PIN', e, s);
+      getIt<Talker>().error('[security] delete PIN failed', e, s);
     }
   }
 
@@ -174,7 +172,7 @@ class SecurityRepositoryImpl implements SecurityRepository {
     try {
       await (await _prefs()).setBool(_biometricsKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[security] Не удалось сохранить биометрию', e, s);
+      getIt<Talker>().error('[security] save biometrics failed', e, s);
     }
   }
 
@@ -198,8 +196,44 @@ class SecurityRepositoryImpl implements SecurityRepository {
         biometricOnly: true,
       );
     } catch (e, s) {
-      getIt<Talker>().error('[security] Ошибка биометрии', e, s);
+      getIt<Talker>().error('[security] biometric auth failed', e, s);
       return false;
     }
+  }
+
+  @override
+  Future<ShareKeysWith> getShareKeysMode() async {
+    try {
+      final stored = (await _prefs()).getString(_shareKeysWithKey);
+      if (stored != null) {
+        return ShareKeysWith.values.byName(stored);
+      }
+    } catch (e, s) {
+      getIt<Talker>().error('[security] read shareKeysWith failed', e, s);
+    }
+    if (getIt.isReadySync<Client>()) return getIt<Client>().shareKeysWith;
+    return ShareKeysWith.crossVerifiedIfEnabled;
+  }
+
+  @override
+  Future<void> setShareKeysMode(ShareKeysWith mode) async {
+    if (getIt.isReadySync<Client>()) {
+      getIt<Client>().shareKeysWith = mode;
+    }
+    try {
+      await (await _prefs()).setString(_shareKeysWithKey, mode.name);
+    } catch (e, s) {
+      getIt<Talker>().error('[security] save shareKeysWith failed', e, s);
+    }
+  }
+
+  static Future<ShareKeysWith> restoredShareKeysMode() async {
+    try {
+      final stored = (await SharedPreferences.getInstance()).getString(
+        _shareKeysWithKey,
+      );
+      if (stored != null) return ShareKeysWith.values.byName(stored);
+    } catch (_) {}
+    return ShareKeysWith.crossVerifiedIfEnabled;
   }
 }

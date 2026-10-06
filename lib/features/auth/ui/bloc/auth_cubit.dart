@@ -33,7 +33,7 @@ class AuthCubit(final AuthRepository _authRepository) extends Cubit<AuthState> {
     try {
       await getIt<PushService>().refreshPusher();
     } catch (e, s) {
-      getIt<Talker>().error('[auth] Ошибка регистрации пушера', e, s);
+      getIt<Talker>().error('[auth] pusher registration failed', e, s);
     }
   }
 
@@ -57,7 +57,7 @@ class AuthCubit(final AuthRepository _authRepository) extends Cubit<AuthState> {
       emit(AuthSsoUnsupported());
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('[auth] Ошибка входа через сайт', e, s);
+      getIt<Talker>().error('[auth] sso login failed', e, s);
       emit(AuthFailure(authErrorMessage(e)));
     }
   }

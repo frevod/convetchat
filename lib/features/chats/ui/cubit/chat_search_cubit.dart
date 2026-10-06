@@ -86,7 +86,7 @@ class ChatSearchCubit(final ChatsRepository _repository)
       }
     } catch (e, s) {
       if (isClosed || generation != _searchGeneration) return;
-      getIt<Talker>().error('Поиск не удался', e, s);
+      getIt<Talker>().error('[chats] search failed', e, s);
       emit(
         state.copyWith(
           isSearching: () => false,
@@ -103,7 +103,7 @@ class ChatSearchCubit(final ChatsRepository _repository)
       return await _repository.createDirectChat(userId);
     } catch (e, s) {
       if (isClosed) return null;
-      getIt<Talker>().error('Не удалось создать чат', e, s);
+      getIt<Talker>().error('[chats] create chat failed', e, s);
       emit(
         state.copyWith(
           errorMessage: () => 'Не удалось создать чат. Попробуйте снова',
@@ -123,7 +123,7 @@ class ChatSearchCubit(final ChatsRepository _repository)
       return roomId;
     } catch (e, s) {
       if (isClosed) return null;
-      getIt<Talker>().error('Не удалось войти в комнату', e, s);
+      getIt<Talker>().error('[chats] join room failed', e, s);
       emit(
         state.copyWith(
           errorMessage: () => 'Не удалось войти в комнату. Попробуйте снова',

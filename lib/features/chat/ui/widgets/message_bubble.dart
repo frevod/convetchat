@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/platform_style.dart';
+import 'package:convetchat/core/widgets/interaction_guard.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/message_bubble_andr.dart';
@@ -52,28 +53,6 @@ class const MessageBubble({
       (cubit) => cubit.state.selectedEventIds.isNotEmpty,
     );
 
-    Widget platformBubble({
-      required GlobalKey? anchor,
-      bool previewOnly = false,
-    }) => isCupertino
-        ? MessageBubbleCup(
-            message: message,
-            highlighted: highlighted,
-            anchorKey: anchor,
-            aboveSameSender: aboveSameSender,
-            belowSameSender: belowSameSender,
-            textSelectable: inSelectionMode && message.isBody,
-          )
-        : MessageBubbleAndr(
-            message: message,
-            highlighted: highlighted,
-            anchorKey: anchor,
-            aboveSameSender: aboveSameSender,
-            belowSameSender: belowSameSender,
-            previewOnly: previewOnly,
-            textSelectable: inSelectionMode && message.isBody,
-          );
-
     return _MessageSelection(
       message: message,
       selected: selected,
@@ -81,7 +60,9 @@ class const MessageBubble({
       textSelectable: inSelectionMode && message.isBody,
       isCupertino: isCupertino,
       anchorKey: anchorKey,
-      child: platformBubble(anchor: anchorKey),
+      highlighted: highlighted,
+      aboveSameSender: aboveSameSender,
+      belowSameSender: belowSameSender,
     );
   }
 }
@@ -91,12 +72,12 @@ class const _MessageSelection({
   required final bool selected,
   required final bool inSelectionMode,
 
-  /// Текстовое сообщение в режиме выбора: удержание и двойной тап
-  /// отданы [SelectableText] для выделения текста, выбор переключается тапом.
   required final bool textSelectable,
   required final bool isCupertino,
   required final GlobalKey? anchorKey,
-  required final Widget child,
+  required final bool highlighted,
+  required final bool aboveSameSender,
+  required final bool belowSameSender,
 }) extends StatefulWidget {
   @override
   State<_MessageSelection> createState() => _MessageSelectionState();
@@ -115,6 +96,31 @@ class _MessageSelectionState() extends State<_MessageSelection> {
 
   ChatMessage get message => widget.message;
 
+  void _cancelPendingMenu() => _tapTimer?.cancel();
+
+  Widget _buildBubble() {
+    if (widget.isCupertino) {
+      return MessageBubbleCup(
+        message: message,
+        highlighted: widget.highlighted,
+        anchorKey: widget.anchorKey,
+        aboveSameSender: widget.aboveSameSender,
+        belowSameSender: widget.belowSameSender,
+        textSelectable: widget.textSelectable,
+        onLinkTap: _cancelPendingMenu,
+      );
+    }
+    return MessageBubbleAndr(
+      message: message,
+      highlighted: widget.highlighted,
+      anchorKey: widget.anchorKey,
+      aboveSameSender: widget.aboveSameSender,
+      belowSameSender: widget.belowSameSender,
+      textSelectable: widget.textSelectable,
+      onLinkTap: _cancelPendingMenu,
+    );
+  }
+
   void _onLongPress(VoidCallback openMenu) {
     _tapTimer?.cancel();
     if (message.status == MessageStatus.sending) {
@@ -131,6 +137,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
 
   void _onTap(VoidCallback openMenu) {
     if (widget.inSelectionMode) {
+      if (InteractionGuard.consume()) return;
       if (message.status != MessageStatus.sending) {
         context.read<ChatCubit>().toggleSelection(message.id);
       }
@@ -144,6 +151,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
     _tapTimer = Timer(_tapDelay, () {
       if (!mounted) return;
       if (widget.inSelectionMode) return;
+      if (InteractionGuard.consume()) return;
       openMenu();
     });
   }
@@ -162,7 +170,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
 
     final anchor = widget.anchorKey;
     if (message.status == MessageStatus.sending && message.media != null) {
-      return widget.child;
+      return _buildBubble();
     }
     final useActionsMenu =
         !widget.inSelectionMode && !widget.isCupertino && anchor != null;
@@ -173,7 +181,7 @@ class _MessageSelectionState() extends State<_MessageSelection> {
         onLongPress: () => _onLongPress(() => _showAndrMenu(context)),
         onTap: () => _onTap(() => _showAndrMenu(context)),
         onDoubleTap: _onDoubleTap,
-        child: widget.child,
+        child: _buildBubble(),
       );
     }
 
@@ -185,12 +193,13 @@ class _MessageSelectionState() extends State<_MessageSelection> {
       onTap: widget.isCupertino
           ? () => _onTap(() => _showCupertinoMenu(context))
           : () {
+              if (InteractionGuard.consume()) return;
               if (widget.inSelectionMode) {
                 cubit.toggleSelection(message.id);
               }
             },
       onDoubleTap: widget.textSelectable ? null : _onDoubleTap,
-      child: widget.child,
+      child: _buildBubble(),
     );
 
     if (widget.isCupertino) return content;

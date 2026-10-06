@@ -22,9 +22,9 @@ class const MessageBubbleCup({
   final bool aboveSameSender = false,
   final bool belowSameSender = false,
 
-  /// Включено в режиме выбора сообщений: текст можно выделять
-  /// удержанием, свайп-ответ при этом отключён чтобы не мешать выделению.
   final bool textSelectable = false,
+
+  final VoidCallback? onLinkTap,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -117,9 +117,12 @@ class const MessageBubbleCup({
                       senderName: message.replySenderName,
                       body: message.replyBody,
                       isOwn: isOwn,
-                      onTap: () => context.read<ChatCubit>().jumpToMessage(
-                        message.replyToEventId!,
-                      ),
+                      onTap: () {
+                        onLinkTap?.call();
+                        context.read<ChatCubit>().jumpToMessage(
+                          message.replyToEventId!,
+                        );
+                      },
                     ),
                   if (deleted)
                     MessageDeletedLabel(color: placeholderColor)
@@ -130,7 +133,7 @@ class const MessageBubbleCup({
                       icon: CupertinoIcons.lock,
                     )
                   else if (hasMedia)
-                    MediaMessage(message: message)
+                    MediaMessage(message: message, onLinkTap: onLinkTap)
                   else if (message.voice != null)
                     VoicePlayer(
                       voice: message.voice!,
@@ -138,6 +141,8 @@ class const MessageBubbleCup({
                       track: contentColor.withValues(alpha: 0.3),
                       playIcon: CupertinoIcons.play_fill,
                       pauseIcon: CupertinoIcons.pause_fill,
+                      downloadIcon: CupertinoIcons.cloud_download,
+                      requireDownload: !isOwn,
                       iconColor: contentColor,
                       buttonColor: isOwn
                           ? white.withValues(alpha: 0.25)
@@ -158,13 +163,29 @@ class const MessageBubbleCup({
                     FormattedText(
                       html: message.bodyHtml!,
                       style: TextStyle(fontSize: 15, color: contentColor),
+                      linkStyle: TextStyle(
+                        fontSize: 15,
+                        color: isOwn ? white : blue,
+                        decoration: TextDecoration.underline,
+                        decorationColor: isOwn ? white : blue,
+                        fontWeight: FontWeight.w600,
+                      ),
                       selectable: textSelectable,
+                      onLinkTap: onLinkTap,
                     )
                   else
                     FormattedText.plain(
                       message.body,
                       style: TextStyle(fontSize: 15, color: contentColor),
+                      linkStyle: TextStyle(
+                        fontSize: 15,
+                        color: isOwn ? white : blue,
+                        decoration: TextDecoration.underline,
+                        decorationColor: isOwn ? white : blue,
+                        fontWeight: FontWeight.w600,
+                      ),
                       selectable: textSelectable,
+                      onLinkTap: onLinkTap,
                     ),
                 ],
               ),

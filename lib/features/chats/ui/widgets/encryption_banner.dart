@@ -62,7 +62,7 @@ class _EncryptionBannerState() extends State<EncryptionBanner> {
       }
       if (type != _type) setState(() => _type = type);
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось проверить состояние крипты', e, s);
+      getIt<Talker>().error('[chats] check encryption state failed', e, s);
     } finally {
       _checking = false;
     }

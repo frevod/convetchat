@@ -8,6 +8,8 @@ import 'package:convetchat/core/push/push_service.dart';
 import 'package:convetchat/core/telegram/telegram_feedback_service.dart';
 import 'package:convetchat/core/theme/accent_color_store.dart';
 import 'package:convetchat/core/theme/theme_mode_store.dart';
+import 'package:convetchat/core/storage/media_disk_cache.dart';
+import 'package:convetchat/core/storage/storage_quota_store.dart';
 import 'package:convetchat/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:convetchat/features/auth/domain/repositories/auth_repository.dart';
 import 'package:convetchat/features/auth/ui/bloc/auth_cubit.dart';
@@ -54,6 +56,8 @@ Future<void> setupLocator() async {
     ..registerLazySingleton<TelegramFeedbackService>(
       () => TelegramFeedbackService(getIt<Talker>()),
     )
+    ..registerLazySingleton<StorageQuotaStore>(() => StorageQuotaStore())
+    ..registerLazySingleton<MediaDiskCache>(() => MediaDiskCache())
     ..registerLazySingleton<GoRouter>(createRouter)
     ..registerLazySingletonAsync<Client>(ClientFactory.createClient)
     ..registerLazySingleton<PushService>(
@@ -86,8 +90,11 @@ Future<void> setupLocator() async {
     )
     ..registerLazySingleton<AppLockService>(() => AppLockService())
     ..registerFactory<SettingsCubit>(
-      () =>
-          SettingsCubit(getIt<AuthRepository>(), getIt<EncryptionRepository>()),
+      () => SettingsCubit(
+        getIt<AuthRepository>(),
+        getIt<EncryptionRepository>(),
+        getIt<ChatsRepository>(),
+      ),
     )
     ..registerFactory<FeedbackCubit>(
       () => FeedbackCubit(getIt<TelegramFeedbackService>()),

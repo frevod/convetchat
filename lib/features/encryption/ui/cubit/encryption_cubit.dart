@@ -88,7 +88,7 @@ class EncryptionCubit(
       emit(state.copyWith(step: () => .setupPassphrase));
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось проверить состояние крипты', e, s);
+      getIt<Talker>().error('[e2ee:cubit] get identity state failed', e, s);
       emit(
         state.copyWith(
           errorMessage: () =>
@@ -144,7 +144,7 @@ class EncryptionCubit(
       try {
         connected = (await _repository.getIdentityState()).connected;
       } catch (e, s) {
-        getIt<Talker>().error('Не удалось дождаться секретов', e, s);
+        getIt<Talker>().error('[e2ee:cubit] wait for secrets failed', e, s);
         break;
       }
       tries++;
@@ -160,7 +160,7 @@ class EncryptionCubit(
       try {
         await _repository.loadBackupKeys();
       } catch (e, s) {
-        getIt<Talker>().error('[e2ee:cubit] loadBackupKeys упал', e, s);
+        getIt<Talker>().error('[e2ee:cubit] loadBackupKeys failed', e, s);
       }
       if (isClosed) return;
       final identity = await _repository.getIdentityState();
@@ -203,7 +203,7 @@ class EncryptionCubit(
       );
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось создать крипто-идентичность', e, s);
+      getIt<Talker>().error('[e2ee:cubit] setup crypto identity failed', e, s);
       emit(
         state.copyWith(
           isLoading: () => false,
@@ -234,7 +234,7 @@ class EncryptionCubit(
         try {
           await _repository.loadBackupKeys();
         } catch (e, s) {
-          getIt<Talker>().error('[e2ee:cubit] loadBackupKeys упал', e, s);
+          getIt<Talker>().error('[e2ee:cubit] loadBackupKeys failed', e, s);
         }
         if (isClosed) return;
       }
@@ -246,17 +246,17 @@ class EncryptionCubit(
       );
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('[e2ee:cubit] unlock: restore упал', e, s);
+      getIt<Talker>().error('[e2ee:cubit] unlock: restore failed', e, s);
       if (e is InvalidPassphraseException) {
         getIt<Talker>().warning(
-          '[e2ee:cubit] unlock: InvalidPassphraseException (неверный ключ)',
+          '[e2ee:cubit] unlock: InvalidPassphraseException (invalid key)',
         );
         await _repository.writeSecureKey(null);
         if (isClosed) return;
         emit(state.copyWith(isLoading: () => false, unlockError: () => e));
         return;
       }
-      getIt<Talker>().error('Секреты шифрования не сошлись', e, s);
+      getIt<Talker>().error('[e2ee:cubit] SSSS secrets mismatch', e, s);
       emit(state.copyWith(isLoading: () => false, secretsMismatch: () => true));
     }
   }
@@ -273,7 +273,7 @@ class EncryptionCubit(
       keyController.text = utf8.decode(bytes, allowMalformed: true).trim();
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось прочитать файл ключа', e, s);
+      getIt<Talker>().error('[e2ee:cubit] read key file failed', e, s);
       emit(
         state.copyWith(errorMessage: () => 'Не удалось прочитать файл ключа'),
       );
@@ -295,10 +295,13 @@ class EncryptionCubit(
   }
 
   Future<void> toggleKeyInSecureStorage(bool? stored) async {
-    if (stored == true) {
-      await _repository.writeSecureKey(state.recoveryKey);
-    } else {
-      await _repository.writeSecureKey(null);
+    final key = state.recoveryKey;
+    if (stored == true && key == null) return;
+    try {
+      await _repository.writeSecureKey(stored == true ? key : null);
+    } catch (e, s) {
+      getIt<Talker>().error('[e2ee:cubit] write secure key failed', e, s);
+      return;
     }
     if (isClosed) return;
     emit(state.copyWith(keyInSecureStorage: () => stored == true));
@@ -324,7 +327,7 @@ class EncryptionCubit(
     try {
       await _repository.requestMissingSessions();
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось запросить сессии', e, s);
+      getIt<Talker>().error('[e2ee:cubit] requestMissingSessions failed', e, s);
     }
     getIt<GoRouter>().go('/chats');
   }
@@ -335,7 +338,7 @@ class EncryptionCubit(
     try {
       await _repository.requestMissingSessions();
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось запросить сессии', e, s);
+      getIt<Talker>().error('[e2ee:cubit] requestMissingSessions failed', e, s);
     }
     getIt<GoRouter>().go('/chats');
   }

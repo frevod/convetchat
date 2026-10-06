@@ -14,13 +14,16 @@ import 'package:convetchat/features/settings/ui/pages/chat_settings_page.dart';
 import 'package:convetchat/features/settings/ui/pages/experimental_page.dart';
 import 'package:convetchat/features/settings/ui/pages/feedback_page.dart';
 import 'package:convetchat/features/settings/ui/pages/notifications_page.dart';
+import 'package:convetchat/features/settings/ui/pages/notification_exceptions_page_andr.dart';
 import 'package:convetchat/features/settings/ui/pages/profile_page.dart';
 import 'package:convetchat/features/settings/ui/pages/security_page.dart';
 import 'package:convetchat/features/settings/ui/pages/settings_page.dart';
+import 'package:convetchat/features/settings/ui/pages/storage_settings_page.dart';
 import 'package:convetchat/features/settings/ui/pages/talker_log_page.dart';
 import 'package:convetchat/features/welcome/ui/pages/splash_page.dart';
 import 'package:convetchat/features/welcome/ui/pages/welcome_page.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:matrix/matrix.dart';
 
@@ -142,8 +145,30 @@ GoRouter createRouter() {
         builder: (context, state) => const NotificationsPage(),
       ),
       GoRoute(
+        path: '/settings/notifications/exceptions',
+        builder: (context, state) {
+          final cubit = state.extra as SettingsCubit?;
+          final people =
+              state.uri.queryParameters['type'] != 'groups';
+          if (cubit != null) {
+            return BlocProvider.value(
+              value: cubit,
+              child: NotificationExceptionsPageAndr(people: people),
+            );
+          }
+          return BlocProvider(
+            create: (_) => getIt<SettingsCubit>(),
+            child: NotificationExceptionsPageAndr(people: people),
+          );
+        },
+      ),
+      GoRoute(
         path: '/settings/security',
         builder: (context, state) => const SecurityPage(),
+      ),
+      GoRoute(
+        path: '/settings/storage',
+        builder: (context, state) => const StorageSettingsPage(),
       ),
       GoRoute(
         path: '/settings/experimental',

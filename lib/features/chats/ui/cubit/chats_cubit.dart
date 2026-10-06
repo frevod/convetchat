@@ -59,7 +59,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
       if (isClosed) return;
       final failure = e is MatrixCallFailure ? e : null;
       getIt<Talker>().error(
-        'Не удалось принять приглашение${failure == null ? '' : ': $failure'}',
+        '[chats] accept invite failed${failure == null ? '' : ': $failure'}',
         e,
         s,
       );
@@ -81,7 +81,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
       await _repository.declineInvite(invite.id);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось отклонить приглашение', e, s);
+      getIt<Talker>().error('[chats] decline invite failed', e, s);
       emit(
         state.copyWith(errorMessage: () => 'Не удалось отклонить приглашение'),
       );
@@ -106,7 +106,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
       await _repository.setMuted(room.id, !room.isMuted);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось изменить уведомления', e, s);
+      getIt<Talker>().error('[chats] toggle mute failed', e, s);
       emit(
         state.copyWith(
           rooms: () => previous,
@@ -129,7 +129,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
       await _repository.setPinned(room.id, !room.isPinned);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось закрепить чат', e, s);
+      getIt<Talker>().error('[chats] pin chat failed', e, s);
       emit(
         state.copyWith(
           rooms: () => previous,
@@ -152,7 +152,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
     } catch (e, s) {
       _leaving.remove(room.id);
       if (isClosed) return;
-      getIt<Talker>().error('Не удалось покинуть комнату', e, s);
+      getIt<Talker>().error('[chats] leave room failed', e, s);
       emit(
         state.copyWith(
           rooms: () => previous,

@@ -29,7 +29,7 @@ class EncryptionRepositoryImpl(final Client _client)
   @override
   Future<void> clearCryptoIdentity() async {
     await _client.clearCryptoIdentity();
-    getIt<Talker>().warning('Крипто-идентичность очищена');
+    getIt<Talker>().warning('[e2ee] crypto identity cleared');
   }
 
   @override
@@ -56,7 +56,7 @@ class EncryptionRepositoryImpl(final Client _client)
     try {
       await _client.restoreCryptoIdentity(keyOrPassphrase, selfSign: false);
     } catch (e, s) {
-      getIt<Talker>().error('[e2ee:restore] restoreCryptoIdentity упал', e, s);
+      getIt<Talker>().error('[e2ee:restore] restoreCryptoIdentity failed', e, s);
       rethrow;
     }
     await _setupDehydratedDevice(keyOrPassphrase);
@@ -73,7 +73,7 @@ class EncryptionRepositoryImpl(final Client _client)
       await handle.unlock(keyOrPassphrase: keyOrPassphrase, postUnlock: false);
       await _client.dehydratedDeviceSetup(handle);
     } catch (e, s) {
-      getIt<Talker>().error('[e2ee:dehydrated] setup упал', e, s);
+      getIt<Talker>().error('[e2ee:dehydrated] setup failed', e, s);
     }
   }
 
@@ -85,7 +85,7 @@ class EncryptionRepositoryImpl(final Client _client)
       );
     } catch (e, s) {
       getIt<Talker>().error(
-        '[e2ee:restore] selfSign упал, устройство осталось непроверенным',
+        '[e2ee:restore] selfSign failed: device unverified',
         e,
         s,
       );
@@ -147,8 +147,8 @@ class EncryptionRepositoryImpl(final Client _client)
         .toList();
     if (eligible.isEmpty) {
       getIt<Talker>().warning(
-        '[e2ee:verify] нет устройств с подписью мастер-ключа — '
-        'SAS-запрос не дойдёт ни до кого, нужен ключ/фраза',
+        '[e2ee:verify] skipped: no master-key-signed devices, '
+        'SAS request has no peer, key/passphrase required',
       );
     }
     final verification = await devices.startVerification();
@@ -159,13 +159,13 @@ class EncryptionRepositoryImpl(final Client _client)
   Future<void> loadBackupKeys() async {
     final keyManager = _client.encryption?.keyManager;
     if (keyManager == null) {
-      getIt<Talker>().warning('[e2ee:backup] keyManager недоступен');
+      getIt<Talker>().warning('[e2ee:backup] keyManager unavailable');
       return;
     }
     try {
       await keyManager.loadAllKeys();
     } catch (e, s) {
-      getIt<Talker>().error('[e2ee:backup] не удалось загрузить ключи', e, s);
+      getIt<Talker>().error('[e2ee:backup] load keys failed', e, s);
     }
   }
 
@@ -225,7 +225,7 @@ class EncryptionRepositoryImpl(final Client _client)
       final key = await _secureStorage.read(key: _secureStorageKey);
       return key;
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось прочитать ключ из хранилища', e, s);
+      getIt<Talker>().error('[e2ee] read secure key failed', e, s);
       return null;
     }
   }

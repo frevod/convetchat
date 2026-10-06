@@ -36,8 +36,6 @@ class PushService(final Client _client, final Talker _talker) {
     }
   }
 
-  /// Порт для фоновых тапов: если система разбудила фоновый изолят
-  /// при живом приложении, действие выполнит прогретый клиент.
   void _registerActionPort() {
     try {
       IsolateNameServer.removePortNameMapping(pushActionPortName);
@@ -50,7 +48,10 @@ class PushService(final Client _client, final Talker _talker) {
         if (message is! String) return;
         final response = deserializeNotificationResponse(message);
         if (response == null) return;
-        if (!_client.isLogged()) return;
+        if (!_client.isLogged()) {
+          _talker.warning('[push:tap:fg] ignored: not logged in');
+          return;
+        }
         try {
           final actionId = response.actionId;
           if (actionId == markAsReadActionId ||
@@ -68,11 +69,11 @@ class PushService(final Client _client, final Talker _talker) {
           }
           _onNotificationTap(response);
         } catch (e) {
-          _talker.error('[push] Ошибка форварда фонового тапа', e);
+          _talker.error('[push] forward background tap failed', e);
         }
       });
     } catch (e) {
-      _talker.error('[push] Не удалось зарегистрировать порт действий', e);
+      _talker.error('[push] register action port failed', e);
     }
   }
 
@@ -92,9 +93,9 @@ class PushService(final Client _client, final Talker _talker) {
       }
     } catch (e, s) {
       if (e is MatrixException && e.error == MatrixError.M_UNKNOWN_TOKEN) {
-        _talker.warning('[push] Токен недействителен — удалять нечего');
+        _talker.warning('[push] delete pusher skipped: unknown token');
       } else {
-        _talker.error('[push] Ошибка удаления пушера', e, s);
+        _talker.error('[push] delete pusher failed', e, s);
       }
     }
   }
@@ -188,6 +189,16 @@ class PushService(final Client _client, final Talker _talker) {
 
       if (eventId != null && roomId != null) {
         try {
+          if (!await contentPreviewEnabled()) {
+            _talker.info('[push:fg] content preview off, generic notification');
+            await showFallbackNotification(
+              roomId: roomId,
+              eventId: eventId,
+              localNotifications: _localNotifications,
+              talker: _talker,
+            );
+            return;
+          }
           final notification = PushNotification.fromJson(data);
           final result = await handlePushNotification(
             notification: notification,
@@ -204,7 +215,7 @@ class PushService(final Client _client, final Talker _talker) {
             );
           }
         } catch (e, s) {
-          _talker.error('[push:fg] Ошибка обработки foreground', e, s);
+          _talker.error('[push:fg] handle foreground message failed', e, s);
         }
         return;
       }
@@ -226,12 +237,12 @@ class PushService(final Client _client, final Talker _talker) {
             eventId: eventId,
           );
         } catch (e, s) {
-          _talker.error('[push:fg] Ошибка показа тестового пуша', e, s);
+          _talker.error('[push:fg] show test notification failed', e, s);
         }
         return;
       }
 
-      _talker.warning('[push:fg] data is empty, skip');
+      _talker.warning('[push:fg] empty payload, skipped');
     });
 
     if (Platform.isIOS) {
@@ -252,11 +263,11 @@ class PushService(final Client _client, final Talker _talker) {
     try {
       _fcmToken = await FirebaseMessaging.instance.getToken();
     } catch (e, s) {
-      _talker.error('[push] Не удалось получить FCM-токен', e, s);
+      _talker.error('[push] get FCM token failed', e, s);
       return;
     }
     if (_fcmToken == null) {
-      _talker.warning('[push] FCM-токен null — пушер не зарегистрирован');
+      _talker.warning('[push] FCM token is null, pusher not registered');
       return;
     }
 
@@ -268,7 +279,7 @@ class PushService(final Client _client, final Talker _talker) {
     required String? token,
   }) async {
     if (token == null) {
-      _talker.warning('[push] Нет токена — пушер не зарегистрирован');
+      _talker.warning('[push] pusher registration skipped: token is null');
       return;
     }
 
@@ -283,7 +294,7 @@ class PushService(final Client _client, final Talker _talker) {
       await Future<void>.delayed(const Duration(seconds: 2));
     }
     if (_client.userID == null || !_client.isLogged()) {
-      _talker.warning('[push] Пропуск регистрации пушера: нет сессии');
+      _talker.warning('[push] pusher registration skipped: no session');
       return;
     }
 
@@ -318,12 +329,12 @@ class PushService(final Client _client, final Talker _talker) {
     } catch (e, s) {
       if (e is MatrixException && e.error == MatrixError.M_UNKNOWN_TOKEN) {
         _talker.warning(
-          '[push] Токен недействителен — пушер не зарегистрирован',
+          '[push] pusher registration skipped: unknown token',
         );
       } else if (e is http.ClientException) {
-        _talker.warning('[push] Регистрация пушера отложена: ${e.message}');
+        _talker.warning('[push] pusher registration deferred: ${e.message}');
       } else {
-        _talker.error('[push] Ошибка регистрации пушера: $e', e, s);
+        _talker.error('[push] pusher registration failed: $e', e, s);
       }
     }
   }
@@ -354,7 +365,7 @@ class PushService(final Client _client, final Talker _talker) {
       try {
         _openRoom(roomId, eventId);
       } catch (e) {
-        _talker.error('[push] Ошибка навигации по тапу', e);
+        _talker.error('[push] open room from tap failed', e);
       }
     }
   }
@@ -431,7 +442,7 @@ class PushService(final Client _client, final Talker _talker) {
       }
       _openRoom(roomId, eventId);
     } catch (e) {
-      _talker.error('[push] Ошибка обработки тапа по уведомлению', e);
+      _talker.error('[push] handle notification tap failed', e);
     }
   }
 
@@ -445,9 +456,12 @@ class PushService(final Client _client, final Talker _talker) {
       switch (response.actionId) {
         case replyActionId:
           final input = response.input?.trim();
-          if (input == null || input.isEmpty) break;
+          if (input == null || input.isEmpty) {
+            _talker.warning('[push:tap:fg] reply skipped: empty input');
+            break;
+          }
           if (room == null) {
-            _talker.warning('[push] Нет комнаты $roomId, ответ не отправлен');
+            _talker.warning('[push:tap:fg] reply skipped: room not found roomId=$roomId');
             break;
           }
           await room
@@ -457,14 +471,41 @@ class PushService(final Client _client, final Talker _talker) {
                 displayPendingEvent: false,
               )
               .timeout(const Duration(seconds: 20));
+          if (eventId != null) {
+            try {
+              await room
+                  .setReadMarker(eventId, mRead: eventId)
+                  .timeout(const Duration(seconds: 10));
+            } catch (e, s) {
+              _talker.warning('[push:tap:fg] read after reply failed', e, s);
+            }
+          }
         case muteActionId:
           if (room != null) {
             await room
-                .setPushRuleState(PushRuleState.mentionsOnly)
+                .setPushRuleState(PushRuleState.dontNotify)
                 .timeout(const Duration(seconds: 10));
+            try {
+              await _client.oneShotSync().timeout(
+                const Duration(seconds: 15),
+              );
+            } catch (e, s) {
+              _talker.warning('[push:tap:fg] sync after mute failed', e, s);
+            }
           } else {
             await _client
-                .setPushRule(PushRuleKind.room, roomId, [])
+                .setPushRule(
+                  PushRuleKind.override,
+                  roomId,
+                  [],
+                  conditions: [
+                    PushCondition(
+                      kind: PushRuleConditions.eventMatch.name,
+                      key: 'room_id',
+                      pattern: roomId,
+                    ),
+                  ],
+                )
                 .timeout(const Duration(seconds: 10));
           }
         default:
@@ -485,12 +526,12 @@ class PushService(final Client _client, final Talker _talker) {
           }
       }
     } catch (e, st) {
-      _talker.error('[push] Ошибка действия из уведомления', e, st);
+      _talker.error('[push:tap:fg] action failed', e, st);
     } finally {
       try {
         await dismissForRoom(roomId);
       } catch (e) {
-        _talker.error('[push] Не удалось снять уведомление', e);
+        _talker.error('[push] dismiss notification failed', e);
       }
     }
   }

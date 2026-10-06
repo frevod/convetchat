@@ -27,7 +27,7 @@ void initKeyForwardListener() {
     try {
       await request.forwardKey();
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось переслать ключ', e, s);
+      getIt<Talker>().error('[e2ee] forward key failed', e, s);
     }
   });
 }

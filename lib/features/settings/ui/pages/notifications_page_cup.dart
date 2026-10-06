@@ -10,7 +10,6 @@ class const NotificationsPageCup({super.key}) extends StatefulWidget {
 class _NotificationsPageCupState() extends State<NotificationsPageCup> {
   bool _peopleEnabled = true;
   bool _groupsEnabled = true;
-  bool _mentionsEnabled = true;
   bool _reactionsEnabled = true;
   bool _invitesEnabled = true;
 
@@ -66,16 +65,6 @@ class _NotificationsPageCupState() extends State<NotificationsPageCup> {
             CupertinoListSection.insetGrouped(
               backgroundColor: CupertinoColors.transparent,
               children: [
-                CupertinoListTile(
-                  leading: const Icon(CupertinoIcons.at),
-                  title: const Text('Упоминания'),
-                  trailing: CupertinoSwitch(
-                    value: _mentionsEnabled,
-                    onChanged: (v) => setState(() => _mentionsEnabled = v),
-                  ),
-                  onTap: () =>
-                      setState(() => _mentionsEnabled = !_mentionsEnabled),
-                ),
                 CupertinoListTile(
                   leading: const Icon(CupertinoIcons.smiley),
                   title: const Text('Реакции'),

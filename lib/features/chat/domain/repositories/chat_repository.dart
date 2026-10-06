@@ -77,6 +77,14 @@ abstract class ChatRepository() {
 
   Future<File> voiceFile(String eventId);
 
+  Future<bool> isMediaCached({
+    required String roomId,
+    required String eventId,
+    required bool thumb,
+  });
+
+  Future<bool> isVoiceCached(String eventId);
+
   Future<Uint8List> mediaBytes({
     required String roomId,
     required String eventId,

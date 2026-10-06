@@ -6,6 +6,8 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/event_label.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
 import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
+import 'package:convetchat/core/storage/media_disk_cache.dart';
+import 'package:convetchat/core/storage/storage_quota_store.dart';
 import 'package:convetchat/core/utils/emoji.dart';
 import 'package:convetchat/core/utils/safe_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
@@ -18,8 +20,6 @@ import 'package:html_unescape/html_unescape.dart';
 import 'package:markdown/markdown.dart';
 import 'package:matrix/encryption.dart';
 import 'package:matrix/matrix.dart';
-import 'package:path/path.dart' as path_lib;
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
@@ -93,7 +93,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setStringList(_hiddenKey(roomId), ids.toList());
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось скрыть событие', e, s);
+      getIt<Talker>().error('[chat] hide event failed', e, s);
       rethrow;
     }
   }
@@ -381,7 +381,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_markdownKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить markdown', e, s);
+      getIt<Talker>().error('[chat] save markdown setting failed', e, s);
     }
   }
 
@@ -406,7 +406,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_bigEmojisKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить эмодзи', e, s);
+      getIt<Talker>().error('[chat] save emoji setting failed', e, s);
     }
   }
 
@@ -431,7 +431,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_hideDeletedKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить скрытие', e, s);
+      getIt<Talker>().error('[chat] save hide deleted setting failed', e, s);
     }
   }
 
@@ -456,7 +456,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_hideUnknownFormatsKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить скрытие', e, s);
+      getIt<Talker>().error('[chat] save hide unknown formats setting failed', e, s);
     }
   }
 
@@ -481,7 +481,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_hideUndecryptableKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить скрытие', e, s);
+      getIt<Talker>().error('[chat] save hide undecryptable setting failed', e, s);
     }
   }
 
@@ -507,7 +507,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(key, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить настройку', e, s);
+      getIt<Talker>().error('[chat] save setting failed', e, s);
     }
   }
 
@@ -616,7 +616,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_quickReactionEmojiKey, value);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] Не удалось сохранить реакцию', e, s);
+      getIt<Talker>().error('[chat] save quick reaction failed', e, s);
     }
   }
 
@@ -692,6 +692,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   }) async {
     final room = _room(roomId);
     if (room == null) throw Exception('Комната не найдена');
+    await _throwIfTooLarge(bytes.length);
     final file = MatrixAudioFile(
       bytes: bytes,
       name: fileName,
@@ -730,17 +731,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     final room = _room(roomId);
     if (room == null) throw Exception('Комната не найдена');
     final bytes = await File(filePath).readAsBytes();
-    if (bytes.length > maxUploadBytes) {
-      throw MatrixCallFailure(
-        method: 'POST',
-        path: '/media/v3/upload',
-        statusCode: null,
-        errcode: 'M_TOO_LARGE',
-        error:
-            '${bytes.length ~/ (1024 * 1024)} МБ при лимите '
-            '${maxUploadBytes ~/ (1024 * 1024)} МБ',
-      );
-    }
+    await _throwIfTooLarge(bytes.length);
     final MatrixFile file;
     if (isVideo) {
       file = MatrixVideoFile(
@@ -790,7 +781,30 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
 
   static const _sendShrinkMaxDimension = 1600;
 
-  static const maxUploadBytes = 50 * 1024 * 1024;
+  static const _fallbackUploadBytes = 200 * 1024 * 1024;
+
+  Future<int> _uploadLimit() async {
+    try {
+      final size = (await _client.getConfig()).mUploadSize;
+      if (size != null && size > 0) return size;
+    } catch (_) {}
+    return _fallbackUploadBytes;
+  }
+
+  Future<void> _throwIfTooLarge(int length) async {
+    final limit = await _uploadLimit();
+    if (length > limit) {
+      throw MatrixCallFailure(
+        method: 'POST',
+        path: '/media/v3/upload',
+        statusCode: null,
+        errcode: 'M_TOO_LARGE',
+        error:
+            '${length ~/ (1024 * 1024)} МБ при лимите '
+            '${limit ~/ (1024 * 1024)} МБ',
+      );
+    }
+  }
 
   @override
   Future<void> cancelSend({
@@ -828,14 +842,51 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     }
   }
 
+  static String _diskKey(String roomId, String eventId, bool thumb) =>
+      '$roomId:$eventId:${thumb ? 't' : 'f'}';
+
+  static String _voiceFileName(String eventId) => '${eventId.hashCode}.m4a';
+
+  @override
+  Future<bool> isMediaCached({
+    required String roomId,
+    required String eventId,
+    required bool thumb,
+  }) async {
+    try {
+      return await getIt<MediaDiskCache>().hasBytes(
+        _diskKey(roomId, eventId, thumb),
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<bool> isVoiceCached(String eventId) async {
+    try {
+      final dir = await getIt<MediaDiskCache>().directory();
+      final file = File(
+        '${dir.path}${Platform.pathSeparator}${_voiceFileName(eventId)}',
+      );
+      if (!await file.exists()) return false;
+      return await file.length() > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   Future<File> voiceFile(String eventId) async {
-    final cacheDir = Directory(
-      path_lib.join((await getTemporaryDirectory()).path, 'voice_cache'),
+    final dir = await getIt<MediaDiskCache>().directory();
+    final file = File(
+      '${dir.path}${Platform.pathSeparator}${_voiceFileName(eventId)}',
     );
-    if (!await cacheDir.exists()) await cacheDir.create(recursive: true);
-    final file = File(path_lib.join(cacheDir.path, '${eventId.hashCode}.m4a'));
-    if (await file.exists()) return file;
+    if (await file.exists()) {
+      try {
+        if (await file.length() > 0) return file;
+      } catch (_) {}
+    }
     Event? target;
     for (final timeline in _timelines.values) {
       for (final event in timeline.events) {
@@ -850,7 +901,12 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     if (found == null) throw Exception('Сообщение не найдено в timeline');
 
     final matrixFile = await found.downloadAndDecryptAttachment();
-    return file.writeAsBytes(matrixFile.bytes);
+    final saved = await file.writeAsBytes(matrixFile.bytes, flush: true);
+    try {
+      final quota = await getIt<StorageQuotaStore>().getMaxBytes();
+      await getIt<MediaDiskCache>().enforceQuota(quota);
+    } catch (_) {}
+    return saved;
   }
 
   final Set<String> _readMarkerBusy = {};
@@ -1117,6 +1173,11 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     required String eventId,
     required bool thumb,
   }) async {
+    final diskKey = _diskKey(roomId, eventId, thumb);
+    try {
+      final disk = await getIt<MediaDiskCache>().getBytes(diskKey);
+      if (disk != null) return disk;
+    } catch (_) {}
     final timeline = _timelines[roomId];
     Event? target;
     if (timeline != null) {
@@ -1129,8 +1190,13 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     }
     final found = target ?? await _findEvent(roomId, eventId);
     if (found == null) throw Exception('Сообщение не найдено в timeline');
-    return (await found.downloadAndDecryptAttachment(getThumbnail: thumb))
-        .bytes;
+    final bytes =
+        (await found.downloadAndDecryptAttachment(getThumbnail: thumb)).bytes;
+    try {
+      final quota = await getIt<StorageQuotaStore>().getMaxBytes();
+      await getIt<MediaDiskCache>().putBytes(diskKey, bytes, maxBytes: quota);
+    } catch (_) {}
+    return bytes;
   }
 
   Future<Event?> _findEvent(String roomId, String eventId) async {

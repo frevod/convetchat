@@ -47,7 +47,7 @@ class UserSearchCubit(final ChatsRepository _repository)
       emit(state.copyWith(results: () => results, isSearching: () => false));
     } catch (e, s) {
       if (isClosed || generation != _searchGeneration) return;
-      getIt<Talker>().error('Поиск пользователей не удался', e, s);
+      getIt<Talker>().error('[chats] user search failed', e, s);
       emit(
         state.copyWith(
           isSearching: () => false,
@@ -64,7 +64,7 @@ class UserSearchCubit(final ChatsRepository _repository)
       if (!context.mounted) return;
       context.push('/chat/$roomId');
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось создать чат', e, s);
+      getIt<Talker>().error('[chats] create chat failed', e, s);
       emit(
         state.copyWith(
           errorMessage: () => 'Не удалось создать чат. Попробуйте снова',

@@ -26,7 +26,7 @@ class const VerificationSheet({
     KeyVerification? request,
   ) async {
     if (request == null) {
-      getIt<Talker>().warning('[e2ee:sheet] show() получил null request');
+      getIt<Talker>().warning('[e2ee:sheet] show skipped: null request');
       return false;
     }
     if (getIt<PlatformStyle>().isCupertino) {
@@ -148,7 +148,7 @@ class _VerificationSheetState() extends State<VerificationSheet> {
     try {
       await action();
     } catch (e, s) {
-      getIt<Talker>().error('[e2ee:sheet] действие упало', e, s);
+      getIt<Talker>().error('[e2ee:sheet] action failed', e, s);
     } finally {
       if (mounted && !_finished) setState(() => _busy = false);
     }

@@ -1,4 +1,6 @@
-abstract class SecurityRepository {
+import 'package:matrix/matrix.dart';
+
+abstract class SecurityRepository() {
   Future<bool> isAppLockEnabled();
   Future<void> setAppLockEnabled(bool enabled);
 
@@ -12,4 +14,7 @@ abstract class SecurityRepository {
 
   Future<bool> canCheckBiometrics();
   Future<bool> authenticate({required String reason});
+
+  Future<ShareKeysWith> getShareKeysMode();
+  Future<void> setShareKeysMode(ShareKeysWith mode);
 }

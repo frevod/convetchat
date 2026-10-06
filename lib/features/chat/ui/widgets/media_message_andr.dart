@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/core/di/locator.dart';
@@ -22,6 +23,7 @@ class const MediaMessageAndr({
   required final ChatMessage message,
   final bool previewOnly = false,
   final bool highlighted = false,
+  final VoidCallback? onLinkTap,
   super.key,
 }) extends StatelessWidget {
   @override
@@ -35,9 +37,17 @@ class const MediaMessageAndr({
       );
     }
     if (media.kind == .video) {
-      return _VideoTile(message: message, previewOnly: previewOnly);
+      return _VideoTile(
+        message: message,
+        previewOnly: previewOnly,
+        onLinkTap: onLinkTap,
+      );
     }
-    return _PhotoTile(message: message, previewOnly: previewOnly);
+    return _PhotoTile(
+      message: message,
+      previewOnly: previewOnly,
+      onLinkTap: onLinkTap,
+    );
   }
 }
 
@@ -61,6 +71,8 @@ class _CircleTileState() extends State<_CircleTile> {
   StreamSubscription<bool>? _mkCompleted;
   bool _playing = false;
   bool _busy = false;
+  bool _fullReady = false;
+  bool _downloading = false;
 
   @override
   void initState() {
@@ -69,8 +81,25 @@ class _CircleTileState() extends State<_CircleTile> {
       _thumb = _loadThumb();
     }
     getIt<CirclePlaybackCoordinator>().addListener(_onCoordinator);
-    if (getIt<CirclePlaybackCoordinator>()
-        .consumeAutoplay(widget.message.id)) {
+    unawaited(_initCache());
+  }
+
+  Future<void> _initCache() async {
+    var ready = widget.message.isOwn;
+    if (!ready) {
+      try {
+        ready = await context.read<ChatCubit>().isFullCached(
+          widget.message.id,
+        );
+      } catch (_) {
+        ready = false;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _fullReady = ready);
+    if (ready &&
+        getIt<CirclePlaybackCoordinator>()
+            .consumeAutoplay(widget.message.id)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_toggle());
       });
@@ -143,7 +172,11 @@ class _CircleTileState() extends State<_CircleTile> {
   bool get _sending => widget.message.status == .sending;
 
   Future<void> _toggle() async {
-    if (widget.previewOnly || _sending || _busy) return;
+    if (widget.previewOnly || _sending || _busy || _downloading) return;
+    if (!_fullReady) {
+      await _download();
+      return;
+    }
     if (PlatformInfos.isLinux) return _toggleLinux();
     if (_playing) {
       _playing = false;
@@ -171,7 +204,7 @@ class _CircleTileState() extends State<_CircleTile> {
         controller.addListener(_onVideoProgress);
         _video = controller;
       } catch (e, s) {
-        getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+        getIt<Talker>().error('[chat] video message playback failed', e, s);
         if (mounted) setState(() => _busy = false);
         return;
       }
@@ -180,11 +213,29 @@ class _CircleTileState() extends State<_CircleTile> {
     try {
       await _video?.play();
     } catch (e, s) {
-      getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+      getIt<Talker>().error('[chat] video message playback failed', e, s);
       return;
     }
     getIt<CirclePlaybackCoordinator>().playStarted(widget.message.id);
     if (mounted) setState(() => _playing = true);
+  }
+
+  Future<void> _download() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      await context.read<ChatCubit>().videoFile(
+        eventId: widget.message.id,
+        fileName: widget.message.media?.fileName,
+        mimeType: widget.message.media?.mimeType,
+      );
+      if (!mounted) return;
+      setState(() => _fullReady = true);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] video message download failed', e, s);
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
   }
 
   Future<void> _toggleLinux() async {
@@ -221,7 +272,7 @@ class _CircleTileState() extends State<_CircleTile> {
         });
         await player.open(Media(file.path));
       } catch (e, s) {
-        getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+        getIt<Talker>().error('[chat] video message playback failed', e, s);
         if (mounted) setState(() => _busy = false);
         return;
       }
@@ -231,7 +282,7 @@ class _CircleTileState() extends State<_CircleTile> {
       await _mkPlayer?.seek(Duration.zero);
       await _mkPlayer?.play();
     } catch (e, s) {
-      getIt<Talker>().error('Кружок: не удалось воспроизвести', e, s);
+      getIt<Talker>().error('[chat] video message playback failed', e, s);
       return;
     }
     getIt<CirclePlaybackCoordinator>().playStarted(widget.message.id);
@@ -264,7 +315,7 @@ class _CircleTileState() extends State<_CircleTile> {
           child: Stack(
             fit: .expand,
             children: [
-              _ThumbBody(thumb: _thumb),
+              _ThumbBody(thumb: _thumb, blurred: !_fullReady && !playing),
               if (playing && _video != null)
                 _CircleVideoFill(controller: _video!, size: size)
               else if (playing && _mkController != null)
@@ -277,12 +328,20 @@ class _CircleTileState() extends State<_CircleTile> {
                     controls: NoVideoControls,
                   ),
                 ),
-              if (_busy || _sending)
+              if (_busy || _downloading || _sending)
                 const Center(
                   child: SizedBox(
                     width: 36,
                     height: 36,
                     child: M3EProgressIndicator.circularWavy(size: 36),
+                  ),
+                )
+              else if (!_fullReady)
+                const Center(
+                  child: Icon(
+                    Icons.download_rounded,
+                    size: 44,
+                    color: Color(0xFFFFFFFF),
                   ),
                 )
               else if (!playing)
@@ -301,7 +360,7 @@ class _CircleTileState() extends State<_CircleTile> {
   }
 }
 
-class const _ThumbBody({required final Future<Uint8List>? thumb})
+class const _ThumbBody({required final Future<Uint8List>? thumb, final bool blurred = false})
     extends StatelessWidget {
   static const _fallback = ColoredBox(color: Color(0xFF000000));
 
@@ -314,10 +373,15 @@ class const _ThumbBody({required final Future<Uint8List>? thumb})
       builder: (context, snapshot) {
         final bytes = snapshot.data;
         if (bytes == null || bytes.isEmpty) return _fallback;
-        return Image.memory(
+        final image = Image.memory(
           bytes,
           fit: .cover,
           errorBuilder: (_, _, _) => _fallback,
+        );
+        if (!blurred) return image;
+        return ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: image,
         );
       },
     );
@@ -347,6 +411,7 @@ class const _CircleVideoFill({
 class const _PhotoTile({
   required final ChatMessage message,
   required final bool previewOnly,
+  final VoidCallback? onLinkTap,
 }) extends StatefulWidget {
   @override
   State<_PhotoTile> createState() => _PhotoTileState();
@@ -354,11 +419,59 @@ class const _PhotoTile({
 
 class _PhotoTileState() extends State<_PhotoTile> {
   late Future<Uint8List> _thumb;
+  bool _fullReady = false;
+  bool _downloading = false;
+  Uint8List? _fullBytes;
 
   @override
   void initState() {
     super.initState();
     _thumb = _load();
+    unawaited(_initCache());
+  }
+
+  Future<void> _initCache() async {
+    if (widget.previewOnly || widget.message.isOwn) {
+      if (!mounted) return;
+      setState(() => _fullReady = true);
+      return;
+    }
+    try {
+      final ready = await context.read<ChatCubit>().isFullCached(
+        widget.message.id,
+      );
+      if (!mounted) return;
+      if (!ready) return;
+      final full = await context.read<ChatCubit>().mediaBytes(
+        eventId: widget.message.id,
+        thumb: false,
+      );
+      if (!mounted) return;
+      setState(() {
+        _fullBytes = full;
+        _fullReady = true;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _download() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      final full = await context.read<ChatCubit>().mediaBytes(
+        eventId: widget.message.id,
+        thumb: false,
+      );
+      if (!mounted) return;
+      setState(() {
+        _fullBytes = full;
+        _fullReady = true;
+      });
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] photo download failed', e, s);
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
   }
 
   Future<Uint8List> _load() {
@@ -378,18 +491,46 @@ class _PhotoTileState() extends State<_PhotoTile> {
     return FutureBuilder<Uint8List>(
       future: _thumb,
       builder: (context, snapshot) {
-        final bytes = snapshot.data;
+        final storedFull = _fullBytes;
+        final full = _fullReady ? storedFull : null;
+        final bytes = full ?? snapshot.data;
         if (bytes != null) {
+          final center = _downloading
+              ? const SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: M3EProgressIndicator.circularWavy(size: 40),
+                )
+              : _fullReady
+              ? null
+              : M3EIconButton(
+                  icon: const Icon(Icons.download_rounded),
+                  variant: .tonal,
+                  onPressed: preview ? null : _download,
+                );
+          final image = Image.memory(bytes, fit: .cover);
           return _MediaFrame(
             message: widget.message,
+            onLinkTap: widget.onLinkTap,
             interactive: !preview,
-            onTap: preview ? null : () => _openViewer(context, bytes),
-            child: Image.memory(bytes, fit: .cover),
+            center: center,
+            onTap: preview
+                ? null
+                : _fullReady
+                ? () => _openViewer(context, full ?? bytes)
+                : _download,
+            child: full != null
+                ? image
+                : ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: image,
+                  ),
           );
         }
         if (snapshot.hasError) {
           return _MediaFrame(
             message: widget.message,
+            onLinkTap: widget.onLinkTap,
             interactive: !preview,
             center: M3EIconButton(
               icon: const Icon(Icons.refresh_rounded),
@@ -401,6 +542,7 @@ class _PhotoTileState() extends State<_PhotoTile> {
         }
         return _MediaFrame(
           message: widget.message,
+          onLinkTap: widget.onLinkTap,
           interactive: !preview,
           center: preview
               ? null
@@ -429,6 +571,7 @@ class _PhotoTileState() extends State<_PhotoTile> {
 class const _VideoTile({
   required final ChatMessage message,
   required final bool previewOnly,
+  final VoidCallback? onLinkTap,
 }) extends StatefulWidget {
   @override
   State<_VideoTile> createState() => _VideoTileState();
@@ -436,11 +579,47 @@ class const _VideoTile({
 
 class _VideoTileState() extends State<_VideoTile> {
   late Future<Uint8List> _thumb;
+  bool _fullReady = false;
+  bool _downloading = false;
 
   @override
   void initState() {
     super.initState();
     _thumb = _load();
+    unawaited(_initCache());
+  }
+
+  Future<void> _initCache() async {
+    if (widget.previewOnly || widget.message.isOwn) {
+      if (!mounted) return;
+      setState(() => _fullReady = true);
+      return;
+    }
+    try {
+      final ready = await context.read<ChatCubit>().isFullCached(
+        widget.message.id,
+      );
+      if (!mounted) return;
+      setState(() => _fullReady = ready);
+    } catch (_) {}
+  }
+
+  Future<void> _download() async {
+    if (_downloading) return;
+    setState(() => _downloading = true);
+    try {
+      await context.read<ChatCubit>().videoFile(
+        eventId: widget.message.id,
+        fileName: widget.message.media?.fileName,
+        mimeType: widget.message.media?.mimeType,
+      );
+      if (!mounted) return;
+      setState(() => _fullReady = true);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] video download failed', e, s);
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
   }
 
   Future<Uint8List> _load() {
@@ -473,31 +652,51 @@ class _VideoTileState() extends State<_VideoTile> {
       future: _thumb,
       builder: (context, snapshot) {
         final bytes = snapshot.data;
-        final center = Container(
-          width: 52,
-          height: 52,
-          decoration: const BoxDecoration(
-            color: Color(0xB3000000),
-            shape: .circle,
-          ),
-          child: const Icon(
-            Icons.play_arrow_rounded,
-            size: 32,
-            color: Color(0xFFFFFFFF),
-          ),
-        );
+        final Widget center = _downloading
+            ? const SizedBox(
+                width: 40,
+                height: 40,
+                child: M3EProgressIndicator.circularWavy(size: 40),
+              )
+            : Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  color: Color(0xB3000000),
+                  shape: .circle,
+                ),
+                child: Icon(
+                  _fullReady
+                      ? Icons.play_arrow_rounded
+                      : Icons.download_rounded,
+                  size: 32,
+                  color: const Color(0xFFFFFFFF),
+                ),
+              );
         if (bytes != null) {
+          final image = Image.memory(bytes, fit: .cover);
           return _MediaFrame(
             message: widget.message,
+            onLinkTap: widget.onLinkTap,
             interactive: !preview,
-            onTap: preview ? null : _open,
+            onTap: preview
+                ? null
+                : _fullReady
+                ? _open
+                : _download,
             center: center,
-            child: Image.memory(bytes, fit: .cover),
+            child: _fullReady
+                ? image
+                : ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: image,
+                  ),
           );
         }
         if (snapshot.hasError) {
           return _MediaFrame(
             message: widget.message,
+            onLinkTap: widget.onLinkTap,
             interactive: !preview,
             onTap: preview ? null : _retryThumb,
             center: const Icon(
@@ -510,6 +709,7 @@ class _VideoTileState() extends State<_VideoTile> {
         }
         return _MediaFrame(
           message: widget.message,
+          onLinkTap: widget.onLinkTap,
           interactive: !preview,
           center: preview
               ? null
@@ -531,6 +731,7 @@ class const _MediaFrame({
   final bool interactive = true,
   final Widget? center,
   final VoidCallback? onTap,
+  final VoidCallback? onLinkTap,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -674,6 +875,18 @@ class const _MediaFrame({
                               ? scheme.onPrimary
                               : scheme.onSurfaceVariant,
                         ),
+                        linkStyle: TextStyle(
+                          fontSize: 14,
+                          color: message.isOwn
+                              ? scheme.onPrimary
+                              : scheme.primary,
+                          decoration: TextDecoration.underline,
+                          decorationColor: message.isOwn
+                              ? scheme.onPrimary
+                              : scheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        onLinkTap: onLinkTap,
                       )
                     : FormattedText.plain(
                         caption,
@@ -683,6 +896,18 @@ class const _MediaFrame({
                               ? scheme.onPrimary
                               : scheme.onSurfaceVariant,
                         ),
+                        linkStyle: TextStyle(
+                          fontSize: 14,
+                          color: message.isOwn
+                              ? scheme.onPrimary
+                              : scheme.primary,
+                          decoration: TextDecoration.underline,
+                          decorationColor: message.isOwn
+                              ? scheme.onPrimary
+                              : scheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        onLinkTap: onLinkTap,
                       ),
               ),
           ],

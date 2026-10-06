@@ -1,3 +1,4 @@
+import 'package:convetchat/core/widgets/interaction_guard.dart';
 import 'package:material_ui/material_ui.dart';
 
 class const MessageReplyQuoteAndr({
@@ -12,7 +13,10 @@ class const MessageReplyQuoteAndr({
     final scheme = Theme.of(context).colorScheme;
     return GestureDetector(
       behavior: .opaque,
-      onTap: onTap,
+      onTap: () {
+        InteractionGuard.mark();
+        onTap();
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 6),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

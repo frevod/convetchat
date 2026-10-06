@@ -72,7 +72,7 @@ class VoicePlaybackService() {
         }
         await _player.play();
       } catch (e, s) {
-        getIt<Talker>().error('Не удалось воспроизвести голосовое', e, s);
+        getIt<Talker>().error('[voice] playback failed', e, s);
       }
       return;
     }
@@ -93,7 +93,7 @@ class VoicePlaybackService() {
       if (token != _loadToken) return;
     } catch (e, s) {
       if (token != _loadToken) return;
-      getIt<Talker>().error('Не удалось загрузить голосовое', e, s);
+      getIt<Talker>().error('[voice] load voice file failed', e, s);
       _currentEventId = null;
       _loading = false;
       _playing = false;
@@ -109,7 +109,7 @@ class VoicePlaybackService() {
       await _player.play();
     } catch (e, s) {
       if (token != _loadToken) return;
-      getIt<Talker>().error('Не удалось воспроизвести голосовое', e, s);
+      getIt<Talker>().error('[voice] playback failed', e, s);
     }
   }
 

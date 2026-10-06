@@ -2,16 +2,21 @@ import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/platform_style.dart';
 import 'package:convetchat/features/settings/domain/repositories/security_repository.dart';
+import 'package:convetchat/features/settings/ui/widgets/pin_shape_indicator.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
-enum AppLockPinMode { setup, verify, change }
+enum AppLockPinMode() {
+  setup,
+  verify,
+  change,
+}
 
 class AppLockPinSheet {
-  const AppLockPinSheet._();
+  const new _();
 
   static Future<bool> showSetup(BuildContext context) =>
       _show(context, mode: AppLockPinMode.setup);
@@ -22,7 +27,10 @@ class AppLockPinSheet {
   static Future<bool> showChange(BuildContext context) =>
       _show(context, mode: AppLockPinMode.change);
 
-  static Future<bool> _show(BuildContext context, {required AppLockPinMode mode}) async {
+  static Future<bool> _show(
+    BuildContext context, {
+    required AppLockPinMode mode,
+  }) async {
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -35,16 +43,14 @@ class AppLockPinSheet {
   }
 }
 
-class _PinSheetBody extends StatefulWidget {
-  const _PinSheetBody({required this.mode});
-
+class const _PinSheetBody({required this.mode}) extends StatefulWidget {
   final AppLockPinMode mode;
 
   @override
   State<_PinSheetBody> createState() => _PinSheetBodyState();
 }
 
-class _PinSheetBodyState extends State<_PinSheetBody> {
+class _PinSheetBodyState() extends State<_PinSheetBody> {
   String _pin = '';
   String? _firstEntry;
   bool _saving = false;
@@ -54,15 +60,15 @@ class _PinSheetBodyState extends State<_PinSheetBody> {
   bool get _isCupertino => getIt<PlatformStyle>().isCupertino;
 
   String get _title => switch (widget.mode) {
-    AppLockPinMode.setup => _firstEntry == null
-        ? 'Придумайте код-пароль'
-        : 'Повторите код-пароль',
+    AppLockPinMode.setup =>
+      _firstEntry == null ? 'Придумайте код-пароль' : 'Повторите код-пароль',
     AppLockPinMode.verify => 'Введите код-пароль',
-    AppLockPinMode.change => _verifyingOld
-        ? 'Введите старый код'
-        : _firstEntry == null
-            ? 'Придумайте новый код'
-            : 'Повторите новый код',
+    AppLockPinMode.change =>
+      _verifyingOld
+          ? 'Введите старый код'
+          : _firstEntry == null
+          ? 'Придумайте новый код'
+          : 'Повторите новый код',
   };
 
   @override
@@ -149,7 +155,7 @@ class _PinSheetBodyState extends State<_PinSheetBody> {
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e, s) {
-      getIt<Talker>().error('[security] Не удалось сохранить PIN', e, s);
+      getIt<Talker>().error('[security] save PIN failed', e, s);
       if (!mounted) return;
       setState(() {
         _saving = false;
@@ -209,7 +215,9 @@ class _PinSheetBodyState extends State<_PinSheetBody> {
           else if (k == 'back')
             GestureDetector(
               onTap: onBackspace,
-              child: const Center(child: Icon(CupertinoIcons.delete_left, size: 28)),
+              child: const Center(
+                child: Icon(CupertinoIcons.delete_left, size: 28),
+              ),
             )
           else
             keyBuilder(k, () => _onDigit(k)),
@@ -245,10 +253,13 @@ class _PinSheetBodyState extends State<_PinSheetBody> {
           const SizedBox(height: 16),
           Text(_title, style: textTheme.headlineSmall),
           const SizedBox(height: 20),
-          _dots(filled: scheme.primary, empty: scheme.surfaceContainerHighest),
+          PinShapeIndicator(filled: _pin.length),
           if (_error != null) ...[
             const SizedBox(height: 12),
-            Text(_error!, style: textTheme.bodyMedium?.copyWith(color: scheme.error)),
+            Text(
+              _error!,
+              style: textTheme.bodyMedium?.copyWith(color: scheme.error),
+            ),
           ],
           const SizedBox(height: 20),
           _numpad(
@@ -313,7 +324,9 @@ class _PinSheetBodyState extends State<_PinSheetBody> {
               onTap: _saving ? null : onTap,
               child: Container(
                 decoration: BoxDecoration(
-                  color: CupertinoColors.secondarySystemFill.resolveFrom(context),
+                  color: CupertinoColors.secondarySystemFill.resolveFrom(
+                    context,
+                  ),
                   borderRadius: .circular(12),
                 ),
                 alignment: Alignment.center,

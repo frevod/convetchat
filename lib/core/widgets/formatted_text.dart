@@ -1,7 +1,13 @@
+import 'dart:async';
+
+import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/core/widgets/interaction_guard.dart';
+import 'package:convetchat/core/widgets/matrix_link_handler.dart';
 import 'package:flutter/gestures.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:material_ui/material_ui.dart';
+import 'package:talker_flutter/talker_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class const FormattedText({
@@ -11,6 +17,8 @@ class const FormattedText({
   final TextStyle? linkStyle,
   final bool linkifyOnly = false,
   final bool selectable = false,
+
+  final VoidCallback? onLinkTap,
 }) extends StatelessWidget {
   static FormattedText plain(
     String text, {
@@ -18,6 +26,7 @@ class const FormattedText({
     required TextStyle style,
     TextStyle? linkStyle,
     bool selectable = false,
+    VoidCallback? onLinkTap,
   }) {
     return FormattedText(
       key: key,
@@ -26,6 +35,7 @@ class const FormattedText({
       linkStyle: linkStyle,
       linkifyOnly: true,
       selectable: selectable,
+      onLinkTap: onLinkTap,
     );
   }
 
@@ -36,6 +46,7 @@ class const FormattedText({
   static List<InlineSpan> _linkify(
     String text,
     TextStyle link,
+    void Function(Uri uri) openLink,
   ) {
     final spans = <InlineSpan>[];
     var offset = 0;
@@ -57,11 +68,7 @@ class const FormattedText({
           style: link,
           recognizer: uri == null
               ? null
-              : (TapGestureRecognizer()
-                  ..onTap = () => launchUrl(
-                    uri,
-                    mode: LaunchMode.externalApplication,
-                  )),
+              : (TapGestureRecognizer()..onTap = () => openLink(uri)),
         ),
       );
       if (end < match.end) {
@@ -86,9 +93,15 @@ class const FormattedText({
           decoration: TextDecoration.underline,
           decorationColor: scheme.primary,
         );
+
+    void openLink(Uri uri) {
+      InteractionGuard.mark();
+      onLinkTap?.call();
+      unawaited(_openLink(context, uri));
+    }
     if (linkifyOnly) {
       final span = TextSpan(
-        children: _linkify(html, effectiveLinkStyle),
+        children: _linkify(html, effectiveLinkStyle, openLink),
         style: style,
       );
       if (selectable) return SelectableText.rich(span);
@@ -99,20 +112,41 @@ class const FormattedText({
       body?.nodes ?? const <dom.Node>[],
       style,
       effectiveLinkStyle,
+      openLink,
+      null,
     );
     final textSpan = TextSpan(children: span, style: style);
     if (selectable) return SelectableText.rich(textSpan);
     return Text.rich(textSpan);
   }
 
+  static Future<void> _openLink(BuildContext context, Uri uri) async {
+    if (isMatrixLink(uri)) {
+      try {
+        if (await openMatrixLink(context, uri)) return;
+      } catch (e, s) {
+        getIt<Talker>().warning('[chat] open matrix link failed: $uri', e, s);
+      }
+    }
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (e, s) {
+      getIt<Talker>().warning('[chat] open link failed: $uri', e, s);
+      return;
+    }
+    getIt<Talker>().warning('[chat] open link not handled: $uri');
+  }
+
   static List<InlineSpan> _renderNodes(
     List<dom.Node> nodes,
     TextStyle base,
     TextStyle link,
+    void Function(Uri uri) openLink,
+    Uri? linkUri,
   ) {
     final spans = <InlineSpan>[];
     for (final node in nodes) {
-      spans.add(_renderNode(node, base, link));
+      spans.add(_renderNode(node, base, link, openLink, linkUri));
       if (node is dom.Element && _isBlock(node.localName)) {
         spans.add(const TextSpan(text: '\n'));
       }
@@ -137,9 +171,16 @@ class const FormattedText({
     dom.Node node,
     TextStyle base,
     TextStyle link,
+    void Function(Uri uri) openLink,
+    Uri? linkUri,
   ) {
     if (node is! dom.Element) {
-      return TextSpan(text: node.text);
+      return TextSpan(
+        text: node.text,
+        recognizer: linkUri == null
+            ? null
+            : (TapGestureRecognizer()..onTap = () => openLink(linkUri)),
+      );
     }
     if (node.localName == 'mx-reply') {
       return const TextSpan();
@@ -152,22 +193,9 @@ class const FormattedText({
     }
     if (node.localName == 'a') {
       final href = node.attributes['href'];
-      final children = _renderNodes(node.nodes, base, link);
-      if (href == null || href.isEmpty) {
-        return TextSpan(children: children);
-      }
-      final uri = Uri.tryParse(href);
-      return TextSpan(
-        children: children,
-        style: link,
-        recognizer: uri == null
-            ? null
-            : (TapGestureRecognizer()
-                ..onTap = () => launchUrl(
-                  uri,
-                  mode: LaunchMode.externalApplication,
-                )),
-      );
+      final uri = href == null || href.isEmpty ? null : Uri.tryParse(href);
+      final children = _renderNodes(node.nodes, base, link, openLink, uri);
+      return TextSpan(children: children, style: link);
     }
     final childStyle = switch (node.localName) {
       'b' || 'strong' => const TextStyle(fontWeight: FontWeight.bold),
@@ -189,7 +217,7 @@ class const FormattedText({
       'blockquote' => const TextStyle(fontStyle: FontStyle.italic),
       _ => null,
     };
-    final children = _renderNodes(node.nodes, base, link);
+    final children = _renderNodes(node.nodes, base, link, openLink, linkUri);
     if (node.localName == 'li') {
       return TextSpan(
         children: [const TextSpan(text: '• '), ...children],
@@ -199,6 +227,7 @@ class const FormattedText({
     if (childStyle == null) {
       return TextSpan(children: children);
     }
-    return TextSpan(children: children, style: base.merge(childStyle));
+    final parentStyle = linkUri == null ? base : link;
+    return TextSpan(children: children, style: parentStyle.merge(childStyle));
   }
 }

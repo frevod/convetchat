@@ -25,9 +25,9 @@ class const MessageBubbleAndr({
 
   final bool previewOnly = false,
 
-  /// Включено в режиме выбора сообщений: текст можно выделять
-  /// удержанием, свайп-ответ при этом отключён чтобы не мешать выделению.
   final bool textSelectable = false,
+
+  final VoidCallback? onLinkTap,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -174,9 +174,12 @@ class const MessageBubbleAndr({
                       senderName: message.replySenderName,
                       body: message.replyBody,
                       isOwn: isOwn,
-                      onTap: () => context.read<ChatCubit>().jumpToMessage(
-                        message.replyToEventId!,
-                      ),
+                      onTap: () {
+                        onLinkTap?.call();
+                        context.read<ChatCubit>().jumpToMessage(
+                          message.replyToEventId!,
+                        );
+                      },
                     ),
                   if (deleted)
                     MessageDeletedLabel(color: placeholderColor)
@@ -187,7 +190,11 @@ class const MessageBubbleAndr({
                       icon: Icons.lock_outline,
                     )
                   else if (hasMedia)
-                    MediaMessageAndr(message: message, previewOnly: previewOnly)
+                    MediaMessageAndr(
+                      message: message,
+                      previewOnly: previewOnly,
+                      onLinkTap: onLinkTap,
+                    )
                   else if (message.voice != null)
                     DefaultTextStyle(
                       style: TextStyle(
@@ -202,6 +209,8 @@ class const MessageBubbleAndr({
                             .withValues(alpha: 0.3),
                         playIcon: Icons.play_arrow_rounded,
                         pauseIcon: Icons.pause_rounded,
+                        downloadIcon: Icons.download_rounded,
+                        requireDownload: !isOwn,
                         iconColor: isOwn
                             ? scheme.primary
                             : scheme.primaryContainer,
@@ -224,7 +233,17 @@ class const MessageBubbleAndr({
                             ? scheme.onPrimary
                             : scheme.onSurfaceVariant,
                       ),
+                      linkStyle: TextStyle(
+                        fontSize: 15,
+                        color: isOwn ? scheme.onPrimary : scheme.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor: isOwn
+                            ? scheme.onPrimary
+                            : scheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
                       selectable: textSelectable,
+                      onLinkTap: onLinkTap,
                     )
                   else
                     FormattedText.plain(
@@ -235,7 +254,17 @@ class const MessageBubbleAndr({
                             ? scheme.onPrimary
                             : scheme.onSurfaceVariant,
                       ),
+                      linkStyle: TextStyle(
+                        fontSize: 15,
+                        color: isOwn ? scheme.onPrimary : scheme.primary,
+                        decoration: TextDecoration.underline,
+                        decorationColor: isOwn
+                            ? scheme.onPrimary
+                            : scheme.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
                       selectable: textSelectable,
+                      onLinkTap: onLinkTap,
                     ),
                 ],
               ),

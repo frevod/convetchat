@@ -46,7 +46,7 @@ class CreateGroupCubit(final ChatsRepository _repository)
     try {
       return await File(path).readAsBytes();
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось прочитать аватар группы', e, s);
+      getIt<Talker>().error('[chats] read group avatar failed', e, s);
       return null;
     }
   }
@@ -72,7 +72,7 @@ class CreateGroupCubit(final ChatsRepository _repository)
         state.copyWith(isCreating: () => false, createdRoomId: () => roomId),
       );
     } catch (e, s) {
-      getIt<Talker>().error('Не удалось создать группу', e, s);
+      getIt<Talker>().error('[chats] create group failed', e, s);
       if (isClosed) return;
       emit(
         state.copyWith(

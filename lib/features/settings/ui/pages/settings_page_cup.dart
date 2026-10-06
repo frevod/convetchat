@@ -123,6 +123,15 @@ class const SettingsPageCup({super.key}) extends StatelessWidget {
                 trailing: const CupertinoListTileChevron(),
                 onTap: () => context.push('/settings/notifications'),
               ),
+              CupertinoListTile(
+                leading: _SettingsIcon(
+                  icon: CupertinoIcons.archivebox_fill,
+                  color: CupertinoColors.systemGrey.resolveFrom(context),
+                ),
+                title: const Text('Данные и память'),
+                trailing: const CupertinoListTileChevron(),
+                onTap: () => context.push('/settings/storage'),
+              ),
             ],
           ),
           CupertinoListSection.insetGrouped(

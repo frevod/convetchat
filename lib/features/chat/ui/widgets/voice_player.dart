@@ -4,9 +4,11 @@ import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/features/chat/domain/entities/voice_message.dart';
+import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
 import 'package:convetchat/features/chat/domain/services/voice_playback_service.dart';
 import 'package:convetchat/features/chat/ui/widgets/waveform_bars.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:talker_flutter/talker_flutter.dart';
 
 class const VoicePlayer({
   super.key,
@@ -15,9 +17,11 @@ class const VoicePlayer({
   required final Color track,
   required final IconData playIcon,
   required final IconData pauseIcon,
+  required final IconData downloadIcon,
   required final Color iconColor,
   required final Color buttonColor,
   required final Color loadingColor,
+  final bool requireDownload = false,
 }) extends StatefulWidget {
   static const int barCount = 30;
 
@@ -29,6 +33,8 @@ class _VoicePlayerState() extends State<VoicePlayer> {
   late final VoicePlaybackService _service;
   late final StreamSubscription<VoicePlaybackState> _sub;
   VoicePlaybackState _state = const VoicePlaybackState();
+  bool _downloaded = false;
+  bool _downloading = false;
 
   @override
   void initState() {
@@ -38,6 +44,21 @@ class _VoicePlayerState() extends State<VoicePlayer> {
     _sub = _service.stream.listen((s) {
       if (mounted) setState(() => _state = s);
     });
+    if (widget.requireDownload) {
+      _checkCached();
+    } else {
+      _downloaded = true;
+    }
+  }
+
+  Future<void> _checkCached() async {
+    try {
+      final cached = await getIt<ChatRepository>().isVoiceCached(
+        widget.voice.eventId,
+      );
+      if (!mounted) return;
+      setState(() => _downloaded = cached);
+    } catch (_) {}
   }
 
   @override
@@ -79,6 +100,28 @@ class _VoicePlayerState() extends State<VoicePlayer> {
     });
   }
 
+  Future<void> _onButton() async {
+    if (_loading || _downloading) return;
+    if (!_downloaded) {
+      await _download();
+      return;
+    }
+    await _toggle();
+  }
+
+  Future<void> _download() async {
+    setState(() => _downloading = true);
+    try {
+      await getIt<ChatRepository>().voiceFile(widget.voice.eventId);
+      if (!mounted) return;
+      setState(() => _downloaded = true);
+    } catch (e, s) {
+      getIt<Talker>().error('[voice] download voice file failed', e, s);
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
   Future<void> _toggle() async {
     if (_loading) return;
     await _service.toggle(widget.voice.eventId, _duration);
@@ -97,7 +140,7 @@ class _VoicePlayerState() extends State<VoicePlayer> {
       children: [
         GestureDetector(
           behavior: .opaque,
-          onTap: _toggle,
+          onTap: _onButton,
           child: Container(
             decoration: BoxDecoration(
               borderRadius: .circular(100),
@@ -105,7 +148,7 @@ class _VoicePlayerState() extends State<VoicePlayer> {
             ),
             child: Padding(
               padding: const EdgeInsets.all(5),
-              child: _loading
+              child: _loading || _downloading
                   ? SizedBox(
                       width: 28,
                       height: 28,
@@ -117,7 +160,9 @@ class _VoicePlayerState() extends State<VoicePlayer> {
                       ),
                     )
                   : Icon(
-                      _playing ? widget.pauseIcon : widget.playIcon,
+                      _downloaded
+                          ? (_playing ? widget.pauseIcon : widget.playIcon)
+                          : widget.downloadIcon,
                       size: 28,
                       color: widget.iconColor,
                     ),

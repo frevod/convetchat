@@ -29,14 +29,14 @@ Future<void> bootstrap() async {
       try {
         await _initFirebase();
       } catch (e) {
-        getIt<Talker>().error('[bootstrap] Firebase не инициализирован', e);
+        getIt<Talker>().error('[bootstrap] Firebase init failed', e);
       }
       registerPushBackgroundHandler();
 
       try {
         await dotenv.load();
       } catch (e) {
-        getIt<Talker>().error('[bootstrap] .env не загружен', e);
+        getIt<Talker>().error('[bootstrap] .env load failed', e);
       }
 
       await TalkerFileSink.init();
@@ -45,7 +45,7 @@ Future<void> bootstrap() async {
         try {
           JustAudioMediaKit.ensureInitialized();
         } catch (e) {
-          getIt<Talker>().error('[bootstrap] MediaKit недоступен', e);
+          getIt<Talker>().error('[bootstrap] MediaKit init failed', e);
         }
       }
 
@@ -56,14 +56,14 @@ Future<void> bootstrap() async {
       try {
         await getIt.getAsync<Client>().timeout(const Duration(seconds: 60));
       } on TimeoutException catch (e, s) {
-        getIt<Talker>().error('[bootstrap] Client init timeout 60с', e, s);
+        getIt<Talker>().error('[bootstrap] Client init timeout (60s)', e, s);
       }
 
       if (getIt.isReadySync<Client>()) {
         await getIt<PushService>().init();
       } else {
         getIt<Talker>().warning(
-          '[bootstrap] Push init пропущен: Client не готов',
+          '[bootstrap] Push init skipped: Client not ready',
         );
       }
 
@@ -71,7 +71,7 @@ Future<void> bootstrap() async {
       final telemetry = getIt<TelemetryService>();
 
       FlutterError.onError = (details) {
-        talker.error('Flutter ошибка', details.exception, details.stack);
+        talker.error('Flutter framework error', details.exception, details.stack);
         telemetry.logError(
           details.exception,
           details.stack ?? StackTrace.current,
@@ -79,14 +79,14 @@ Future<void> bootstrap() async {
       };
 
       WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
-        talker.error('Неизвестная ошибка', error, stack);
+        talker.error('Uncaught platform error', error, stack);
         telemetry.logError(error, stack);
         return true;
       };
     },
     (error, stack) {
       try {
-        getIt<Talker>().error('Неизвестная ошибка', error, stack);
+        getIt<Talker>().error('Uncaught zone error', error, stack);
       } catch (_) {
         debugPrint('Bootstrap error: $error');
       }

@@ -135,10 +135,10 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
     try {
       final hits = await _serverSearchMessages(query);
       if (hits.isNotEmpty) return hits;
-      getIt<Talker>().warning('Серверный поиск сообщений пуст, ищу локально');
+      getIt<Talker>().warning('[chats] server message search empty, local fallback');
     } catch (e, s) {
       getIt<Talker>().warning(
-        'Серверный поиск сообщений недоступен, ищу локально',
+        '[chats] server message search failed, local fallback',
         e,
         s,
       );
@@ -202,7 +202,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
         }
       } catch (e, s) {
         getIt<Talker>().warning(
-          'Локальный поиск не удался в комнате ${room.id}',
+          '[chats] local message search failed in room ${room.id}',
           e,
           s,
         );
@@ -276,7 +276,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
           );
         }
       } catch (e, s) {
-        getIt<Talker>().warning('Не удалось резолвить алиас $trimmed', e, s);
+        getIt<Talker>().warning('[chats] resolve alias failed: $trimmed', e, s);
       }
     }
     return rooms;
@@ -407,9 +407,23 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
     if (room == null) {
       throw StateError('Комната не найдена: $roomId');
     }
-    await room.setPushRuleState(
-      muted ? PushRuleState.dontNotify : PushRuleState.notify,
-    );
+    try {
+      await room.setPushRuleState(
+        muted ? PushRuleState.dontNotify : PushRuleState.notify,
+      );
+    } on MatrixException catch (e) {
+      if (e.error != MatrixError.M_NOT_FOUND) rethrow;
+      try {
+        await _client.oneShotSync().timeout(const Duration(seconds: 15));
+      } catch (_) {}
+      try {
+        await room.setPushRuleState(
+          muted ? PushRuleState.dontNotify : PushRuleState.notify,
+        );
+      } on MatrixException catch (e) {
+        if (e.error != MatrixError.M_NOT_FOUND) rethrow;
+      }
+    }
   }
 
   @override

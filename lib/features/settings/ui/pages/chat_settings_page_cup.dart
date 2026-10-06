@@ -39,7 +39,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
       if (!mounted) return;
       setState(() => _formattedMessages = enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось прочитать markdown', e, s);
+      getIt<Talker>().error('[settings] read markdown failed', e, s);
     }
   }
 
@@ -48,7 +48,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setMarkdownEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить markdown', e, s);
+      getIt<Talker>().error('[settings] save markdown failed', e, s);
     }
   }
 
@@ -58,7 +58,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
       if (!mounted) return;
       setState(() => _bigEmojis = enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось прочитать эмодзи', e, s);
+      getIt<Talker>().error('[settings] read big emojis failed', e, s);
     }
   }
 
@@ -67,7 +67,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setBigEmojisEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить эмодзи', e, s);
+      getIt<Talker>().error('[settings] save big emojis failed', e, s);
     }
   }
 
@@ -84,7 +84,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
         _hideUndecryptable = hideUndecryptable;
       });
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось прочитать скрытие', e, s);
+      getIt<Talker>().error('[settings] read hide flags failed', e, s);
     }
   }
 
@@ -93,7 +93,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setHideUnknownFormatsEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить скрытие', e, s);
+      getIt<Talker>().error('[settings] save hide flags failed', e, s);
     }
   }
 
@@ -102,7 +102,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setHideDeletedEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить скрытие', e, s);
+      getIt<Talker>().error('[settings] save hide flags failed', e, s);
     }
   }
 
@@ -111,7 +111,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setHideUndecryptableEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить скрытие', e, s);
+      getIt<Talker>().error('[settings] save hide flags failed', e, s);
     }
   }
 
@@ -128,7 +128,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
         _videoAutoplay = video;
       });
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось прочитать автоплей', e, s);
+      getIt<Talker>().error('[settings] read autoplay failed', e, s);
     }
   }
 
@@ -137,7 +137,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setAutoplayEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить автоплей', e, s);
+      getIt<Talker>().error('[settings] save autoplay failed', e, s);
     }
   }
 
@@ -146,7 +146,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setVoiceAutoplayEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить автоплей', e, s);
+      getIt<Talker>().error('[settings] save autoplay failed', e, s);
     }
   }
 
@@ -155,7 +155,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setVideoAutoplayEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить автоплей', e, s);
+      getIt<Talker>().error('[settings] save autoplay failed', e, s);
     }
   }
 
@@ -174,7 +174,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
         _quickEmoji = emoji;
       });
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось прочитать ввод', e, s);
+      getIt<Talker>().error('[settings] read interaction failed', e, s);
     }
   }
 
@@ -183,7 +183,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setSendOnEnterEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить ввод', e, s);
+      getIt<Talker>().error('[settings] save interaction failed', e, s);
     }
   }
 
@@ -192,7 +192,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setSwipeToReplyEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить ввод', e, s);
+      getIt<Talker>().error('[settings] save interaction failed', e, s);
     }
   }
 
@@ -201,7 +201,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setQuickReactionEnabled(value);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить ввод', e, s);
+      getIt<Talker>().error('[settings] save interaction failed', e, s);
     }
   }
 
@@ -212,7 +212,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     try {
       await getIt<ChatRepository>().setQuickReactionEmoji(picked);
     } catch (e, s) {
-      getIt<Talker>().error('[settings] Не удалось сохранить реакцию', e, s);
+      getIt<Talker>().error('[settings] save quick reaction failed', e, s);
     }
   }
 
