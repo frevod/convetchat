@@ -1,3 +1,4 @@
+import 'package:convetchat/core/utils/file_format.dart';
 import 'package:convetchat/features/chat/domain/entities/pending_media.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -17,6 +18,9 @@ class const PendingMediaStripAndr({
         separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final item = items[index];
+          if (item.isFile) {
+            return _FilePendingTile(item: item, onRemove: onRemove);
+          }
           return SizedBox(
             width: 64,
             height: 64,
@@ -84,5 +88,63 @@ class const PendingMediaStripAndr({
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+}
+
+class const _FilePendingTile({
+  required final PendingMedia item,
+  required final Future<void> Function(String id) onRemove,
+}) extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 200,
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: .circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.insert_drive_file_rounded,
+            size: 28,
+            color: scheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: .center,
+              crossAxisAlignment: .start,
+              children: [
+                Text(
+                  item.fileName,
+                  maxLines: 1,
+                  overflow: .ellipsis,
+                  style: TextStyle(fontSize: 13, color: scheme.onSurface),
+                ),
+                Text(
+                  formatFileSize(item.size),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => onRemove(item.id),
+            child: Icon(
+              Icons.close_rounded,
+              size: 18,
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

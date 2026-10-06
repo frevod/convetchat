@@ -36,6 +36,8 @@ import 'package:photo_manager/photo_manager.dart';
 import 'package:record/record.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 
 class ChatCubit(
   final ChatRepository _repository, {
@@ -80,12 +82,11 @@ class ChatCubit(
       if (isClosed) return;
       emit(state.copyWith(pinnedEventIds: () => ids));
     });
-    _voiceCompletedSubscription = getIt<VoicePlaybackService>().completed.listen(
-      (eventId) {
-        if (isClosed) return;
-        unawaited(playNextAfter(eventId));
-      },
-    );
+    _voiceCompletedSubscription = getIt<VoicePlaybackService>().completed
+        .listen((eventId) {
+          if (isClosed) return;
+          unawaited(playNextAfter(eventId));
+        });
     inputController.addListener(_onInputChanged);
     _wasKeyboardVisible = _keyboardVisibleNow;
     WidgetsBinding.instance.addObserver(this);
@@ -329,20 +330,31 @@ class ChatCubit(
       var attempt = 0;
       while (true) {
         try {
-          await _repository.sendMedia(
-            roomId: _roomId,
-            filePath: item.filePath,
-            fileName: item.fileName,
-            isVideo: item.isVideo,
-            width: item.width,
-            height: item.height,
-            durationMs: item.durationMs,
-            thumbBytes: item.thumbBytes.isEmpty ? null : item.thumbBytes,
-            thumbWidth: item.thumbWidth,
-            thumbHeight: item.thumbHeight,
-            caption: index == 0 && text.isNotEmpty ? text : null,
-            inReplyToEventId: replyToEventId,
-          );
+          if (item.isFile) {
+            await _repository.sendFile(
+              roomId: _roomId,
+              filePath: item.filePath,
+              fileName: item.fileName,
+              size: item.size,
+              caption: index == 0 && text.isNotEmpty ? text : null,
+              inReplyToEventId: replyToEventId,
+            );
+          } else {
+            await _repository.sendMedia(
+              roomId: _roomId,
+              filePath: item.filePath,
+              fileName: item.fileName,
+              isVideo: item.isVideo,
+              width: item.width,
+              height: item.height,
+              durationMs: item.durationMs,
+              thumbBytes: item.thumbBytes.isEmpty ? null : item.thumbBytes,
+              thumbWidth: item.thumbWidth,
+              thumbHeight: item.thumbHeight,
+              caption: index == 0 && text.isNotEmpty ? text : null,
+              inReplyToEventId: replyToEventId,
+            );
+          }
           return;
         } on matrix.MatrixException catch (e) {
           final waitMs = e.retryAfterMs;
@@ -459,7 +471,7 @@ class ChatCubit(
   };
 
   Future<void> attachLocalFiles(
-    List<({String path, String name})> files,
+    List<({String path, String name, int? size})> files,
   ) async {
     if (isClosed || files.isEmpty) return;
     final space = _maxPendingMedia - state.pendingMedia.length;
@@ -482,12 +494,16 @@ class ChatCubit(
             .replaceFirst('.', '')
             .toLowerCase();
         final isVideo = _videoExtensions.contains(ext);
+        final isImage = _imageExtensions.contains(ext);
+        final isFile = !isVideo && !isImage;
         Uint8List thumb = Uint8List(0);
         int? width;
         int? height;
-        if (_imageExtensions.contains(ext)) {
+        int? size = entry.size;
+        if (isImage) {
           try {
             final bytes = await file.readAsBytes();
+            size ??= bytes.length;
             final small = makeImageThumb(bytes);
             if (small != null) {
               thumb = small.bytes;
@@ -513,11 +529,11 @@ class ChatCubit(
             }
           } catch (_) {}
         }
+        size ??= await file.length().then((v) => v, onError: (_) => 0);
         final side = _thumbSide(width ?? 0, height ?? 0);
         items.add(
           PendingMedia(
-            id:
-                '${DateTime.now().microsecondsSinceEpoch}_${entry.path.hashCode}',
+            id: '${DateTime.now().microsecondsSinceEpoch}_${entry.path.hashCode}',
             filePath: entry.path,
             fileName: entry.name,
             isVideo: isVideo,
@@ -526,6 +542,8 @@ class ChatCubit(
             height: height,
             thumbWidth: side.$1,
             thumbHeight: side.$2,
+            isFile: isFile,
+            size: size,
           ),
         );
       } catch (e, s) {
@@ -541,6 +559,57 @@ class ChatCubit(
             : null,
       ),
     );
+  }
+
+  Future<void> pickFiles() async {
+    if (isClosed) return;
+    try {
+      final picked = await FilePicker.pickFiles();
+      if (isClosed) return;
+      final files = picked
+          .where((f) => f.path != null && f.path!.isNotEmpty)
+          .map((f) => (path: f.path!, name: f.name, size: f.lengthSync()))
+          .toList(growable: false);
+      if (files.isEmpty) return;
+      await attachLocalFiles(files);
+    } catch (e, s) {
+      if (isClosed) return;
+      getIt<Talker>().error('[chat] pick files failed', e, s);
+      emit(state.copyWith(errorMessage: () => 'Не удалось выбрать файлы'));
+    }
+  }
+
+  Future<void> openFileMessage(ChatMessage message) async {
+    final media = message.media;
+    if (media == null || media.kind != .file || isClosed) return;
+    try {
+      final bytes = await mediaBytes(eventId: message.id, thumb: false);
+      if (isClosed) return;
+      if (bytes.isEmpty) throw Exception('Пустой файл');
+      final dir = await getTemporaryDirectory();
+      final safeName = _safeFileName(media.fileName ?? message.body);
+      final file = File('${dir.path}${Platform.pathSeparator}$safeName');
+      await file.writeAsBytes(bytes, flush: true);
+      final result = await OpenFilex.open(file.path);
+      if (result.type != .done && !isClosed) {
+        emit(
+          state.copyWith(
+            errorMessage: () => 'Не удалось открыть файл: ${result.message}',
+          ),
+        );
+      }
+    } catch (e, s) {
+      if (isClosed) return;
+      getIt<Talker>().error('[chat] open file failed', e, s);
+      emit(state.copyWith(errorMessage: () => 'Не удалось открыть файл'));
+    }
+  }
+
+  static String _safeFileName(String name) {
+    final trimmed = name.trim();
+    final base = trimmed.isEmpty ? 'file' : trimmed;
+    final safe = base.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    return '${DateTime.now().microsecondsSinceEpoch}_$safe';
   }
 
   Future<void> removePending(String id) async {
@@ -912,8 +981,7 @@ class ChatCubit(
     }
   }
 
-  Future<void> toggleHeart(ChatMessage message) =>
-      toggleQuickReaction(message);
+  Future<void> toggleHeart(ChatMessage message) => toggleQuickReaction(message);
 
   Future<void> toggleQuickReaction(ChatMessage message) {
     if (!state.quickReactionEnabled) return Future.value();
@@ -969,7 +1037,8 @@ class ChatCubit(
     if (isClosed) return;
     emit(
       state.copyWith(
-        messages: () => state.messages.where((m) => m.id != message.id).toList(),
+        messages: () =>
+            state.messages.where((m) => m.id != message.id).toList(),
       ),
     );
   }
@@ -1134,7 +1203,10 @@ class ChatCubit(
         emit(state.copyWith(errorMessage: () => 'Нет доступа к камере'));
         return;
       }
-      final controller = await getIt<CircleVideoService>().ensureFrontPreview();
+      final quality = await _repository.getCircleVideoQuality();
+      final controller = await getIt<CircleVideoService>().ensureFrontPreview(
+        preset: CircleVideoService.qualityPreset(quality),
+      );
       if (isClosed || state.recordMode != .circle || !state.isRecording) {
         await getIt<CircleVideoService>().disposePreview();
         return;
@@ -1421,8 +1493,9 @@ class ChatCubit(
     }
   }
 
-  static Future<({Uint8List bytes, int width, int height})?>
-  _circleThumb(String path) async {
+  static Future<({Uint8List bytes, int width, int height})?> _circleThumb(
+    String path,
+  ) async {
     try {
       final frame = await FcNativeVideoThumbnail().saveThumbnailToBytes(
         srcFile: path,

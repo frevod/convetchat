@@ -20,6 +20,7 @@ import 'package:html_unescape/html_unescape.dart';
 import 'package:markdown/markdown.dart';
 import 'package:matrix/encryption.dart';
 import 'package:matrix/matrix.dart';
+import 'package:mime/mime.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
@@ -36,6 +37,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   static const _swipeToReplyKey = 'chat_swipe_to_reply_enabled';
   static const _quickReactionKey = 'chat_quick_reaction_enabled';
   static const _quickReactionEmojiKey = 'chat_quick_reaction_emoji';
+  static const _circleQualityKey = 'chat_circle_video_quality';
 
   static const defaultQuickReactionEmoji = '❤️';
 
@@ -456,7 +458,11 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_hideUnknownFormatsKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] save hide unknown formats setting failed', e, s);
+      getIt<Talker>().error(
+        '[chat] save hide unknown formats setting failed',
+        e,
+        s,
+      );
     }
   }
 
@@ -481,7 +487,11 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_hideUndecryptableKey, enabled);
     } catch (e, s) {
-      getIt<Talker>().error('[chat] save hide undecryptable setting failed', e, s);
+      getIt<Talker>().error(
+        '[chat] save hide undecryptable setting failed',
+        e,
+        s,
+      );
     }
   }
 
@@ -620,6 +630,28 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     }
   }
 
+  @override
+  Future<String> getCircleVideoQuality() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_circleQualityKey);
+      if (stored == null || stored.isEmpty) return 'veryHigh';
+      return stored;
+    } catch (_) {
+      return 'veryHigh';
+    }
+  }
+
+  @override
+  Future<void> setCircleVideoQuality(String quality) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_circleQualityKey, quality);
+    } catch (e, s) {
+      getIt<Talker>().error('[chat] Не удалось сохранить качество', e, s);
+    }
+  }
+
   static Map<String, Object?> _formattedCaption(String caption) {
     final content = <String, Object?>{'body': caption};
     final html = markdownToHtml(
@@ -629,9 +661,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       ),
       extensionSet: ExtensionSet.gitHubFlavored,
     );
-    if (HtmlUnescape().convert(
-          html.replaceAll(RegExp(r'<br />\n?'), '\n'),
-        ) !=
+    if (HtmlUnescape().convert(html.replaceAll(RegExp(r'<br />\n?'), '\n')) !=
         caption) {
       content['format'] = 'org.matrix.custom.html';
       content['formatted_body'] = html;
@@ -774,6 +804,35 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       file,
       thumbnail: thumbnail,
       shrinkImageMaxDimension: isVideo ? null : _sendShrinkMaxDimension,
+      extraContent: extraContent.isEmpty ? null : extraContent,
+      inReplyTo: _replyTarget(roomId, inReplyToEventId),
+    );
+  }
+
+  @override
+  Future<void> sendFile({
+    required String roomId,
+    required String filePath,
+    required String fileName,
+    int? size,
+    String? caption,
+    String? inReplyToEventId,
+  }) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    final bytes = await File(filePath).readAsBytes();
+    await _throwIfTooLarge(bytes.length);
+    final file = MatrixFile(
+      bytes: bytes,
+      name: fileName,
+      mimeType: lookupMimeType(fileName),
+    );
+    final extraContent = <String, Object?>{};
+    if (caption != null && caption.isNotEmpty) {
+      extraContent['body'] = caption;
+    }
+    await room.sendFileEvent(
+      file,
       extraContent: extraContent.isEmpty ? null : extraContent,
       inReplyTo: _replyTarget(roomId, inReplyToEventId),
     );
@@ -950,6 +1009,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       MessageTypes.Notice ||
       MessageTypes.Image ||
       MessageTypes.Video ||
+      MessageTypes.File ||
       MessageTypes.Audio => false,
       _ => true,
     };
@@ -966,11 +1026,10 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     return timeline.events
         .where(isChatVisible)
         .where((event) => !hidden.contains(event.eventId))
+        .where((event) => _hideDeletedCache != true || !event.redacted)
         .where(
-          (event) => _hideDeletedCache != true || !event.redacted,
-        )
-        .where(
-          (event) => _hideUnknownFormatsCache != true || !_isUnknownFormat(event),
+          (event) =>
+              _hideUnknownFormatsCache != true || !_isUnknownFormat(event),
         )
         .where(
           (event) =>
@@ -978,63 +1037,66 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
               event.messageType != MessageTypes.BadEncrypted,
         )
         .map((event) {
-      final state = isStateEvent(event);
-      final isOwn = !state && event.senderId == ownId;
-      final replyToEventId = state
-          ? null
-          : event.inReplyToEventId(includingFallback: false);
-      final replyEvent = replyToEventId == null ? null : byId[replyToEventId];
-      final display = event.getDisplayEvent(timeline);
-      final plainBody = _body(room, event, display);
-      final bodyHtml = _markdownCache == true
-          ? _formattedBody(display.content)
-          : null;
-      final voice = state ? null : _voice(event);
-      final media = state ? null : _media(event);
-      final bigEmojiSize =
-          !state &&
-              !event.redacted &&
-              bodyHtml == null &&
-              voice == null &&
-              media == null &&
-              _bigEmojisCache == true
-          ? bigEmojiFontSize(emojiOnlyCount(plainBody))
-          : null;
-      return ChatMessage(
-        id: event.eventId,
-        txId: event.transactionId,
-        senderId: event.senderId,
-        senderName: _senderName(room, event.senderId),
-        senderAvatarMxc: room
-            .unsafeGetUserFromMemoryOrFallback(event.senderId)
-            .avatarUrl
-            ?.toString(),
-        showSender: showSender,
-        body: plainBody,
-        bodyHtml: bodyHtml,
-        bigEmojiSize: bigEmojiSize,
-        time: event.originServerTs,
-        isOwn: isOwn,
-        status: state ? null : _status(event, room, isOwn: isOwn),
-        replyToEventId: replyToEventId,
-        replySenderName: replyEvent == null
-            ? null
-            : _senderName(room, replyEvent.senderId),
-        replyBody: replyEvent == null ? null : eventLabel(replyEvent),
-        voice: voice,
-        media: media,
-        isState: state,
-        isDeleted: event.redacted,
-        isEdited: !state && display.eventId != event.eventId,
-        isUndecryptable:
-            !state &&
-            !event.redacted &&
-            event.type == EventTypes.Encrypted &&
-            event.messageType == MessageTypes.BadEncrypted,
-        reactions: state ? const [] : _reactions(event, timeline),
-        seenBy: state ? const [] : _seenBy(room, event, ownId: ownId),
-      );
-    }).toList();
+          final state = isStateEvent(event);
+          final isOwn = !state && event.senderId == ownId;
+          final replyToEventId = state
+              ? null
+              : event.inReplyToEventId(includingFallback: false);
+          final replyEvent = replyToEventId == null
+              ? null
+              : byId[replyToEventId];
+          final display = event.getDisplayEvent(timeline);
+          final plainBody = _body(room, event, display);
+          final bodyHtml = _markdownCache == true
+              ? _formattedBody(display.content)
+              : null;
+          final voice = state ? null : _voice(event);
+          final media = state ? null : _media(event);
+          final bigEmojiSize =
+              !state &&
+                  !event.redacted &&
+                  bodyHtml == null &&
+                  voice == null &&
+                  media == null &&
+                  _bigEmojisCache == true
+              ? bigEmojiFontSize(emojiOnlyCount(plainBody))
+              : null;
+          return ChatMessage(
+            id: event.eventId,
+            txId: event.transactionId,
+            senderId: event.senderId,
+            senderName: _senderName(room, event.senderId),
+            senderAvatarMxc: room
+                .unsafeGetUserFromMemoryOrFallback(event.senderId)
+                .avatarUrl
+                ?.toString(),
+            showSender: showSender,
+            body: plainBody,
+            bodyHtml: bodyHtml,
+            bigEmojiSize: bigEmojiSize,
+            time: event.originServerTs,
+            isOwn: isOwn,
+            status: state ? null : _status(event, room, isOwn: isOwn),
+            replyToEventId: replyToEventId,
+            replySenderName: replyEvent == null
+                ? null
+                : _senderName(room, replyEvent.senderId),
+            replyBody: replyEvent == null ? null : eventLabel(replyEvent),
+            voice: voice,
+            media: media,
+            isState: state,
+            isDeleted: event.redacted,
+            isEdited: !state && display.eventId != event.eventId,
+            isUndecryptable:
+                !state &&
+                !event.redacted &&
+                event.type == EventTypes.Encrypted &&
+                event.messageType == MessageTypes.BadEncrypted,
+            reactions: state ? const [] : _reactions(event, timeline),
+            seenBy: state ? const [] : _seenBy(room, event, ownId: ownId),
+          );
+        })
+        .toList();
   }
 
   static List<SeenByUser> _seenBy(
@@ -1079,6 +1141,11 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
         isOwn: event.senderId == room.client.userID,
         senderName: _senderName(room, event.senderId),
       );
+    }
+    if (!isStateEvent(display)) {
+      final raw = display.content.tryGet<String>('body') ?? '';
+      final clean = sanitizeForText(stripReplyFallback(raw));
+      return clean.isEmpty ? 'Сообщение' : clean;
     }
     return eventLabel(display);
   }
@@ -1127,7 +1194,8 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     final type = event.messageType;
     final isImage = type == MessageTypes.Image;
     final isVideo = type == MessageTypes.Video;
-    if (!isImage && !isVideo) return null;
+    final isFile = type == MessageTypes.File;
+    if (!isImage && !isVideo && !isFile) return null;
     if (!event.hasAttachment &&
         (event.status.isSent ||
             (!event.status.isSending && !event.status.isError))) {
@@ -1146,7 +1214,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
         ? body
         : null;
     return MediaAttachment(
-      kind: isVideo ? .video : .image,
+      kind: isVideo ? .video : (isImage ? .image : .file),
       width: info?.tryGet<int>('w'),
       height: info?.tryGet<int>('h'),
       durationMs: info?.tryGet<int>('duration'),
@@ -1190,8 +1258,9 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     }
     final found = target ?? await _findEvent(roomId, eventId);
     if (found == null) throw Exception('Сообщение не найдено в timeline');
-    final bytes =
-        (await found.downloadAndDecryptAttachment(getThumbnail: thumb)).bytes;
+    final bytes = (await found.downloadAndDecryptAttachment(
+      getThumbnail: thumb,
+    )).bytes;
     try {
       final quota = await getIt<StorageQuotaStore>().getMaxBytes();
       await getIt<MediaDiskCache>().putBytes(diskKey, bytes, maxBytes: quota);
@@ -1409,9 +1478,6 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     if (text.isEmpty) {
       throw Exception('Пересылать можно только текстовые сообщения');
     }
-    await target.sendTextEvent(
-      text,
-      parseMarkdown: await isMarkdownEnabled(),
-    );
+    await target.sendTextEvent(text, parseMarkdown: await isMarkdownEnabled());
   }
 }

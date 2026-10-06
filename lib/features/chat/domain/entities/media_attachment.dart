@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 enum MediaKind() {
   image,
   video,
+  file,
 }
 
 class const MediaAttachment({

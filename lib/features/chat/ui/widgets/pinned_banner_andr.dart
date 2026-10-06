@@ -11,7 +11,11 @@ String pinnedPreviewText(ChatMessage message) {
   if (message.voice != null) return 'Голосовое сообщение';
   final media = message.media;
   if (media != null) {
-    return media.kind == .video ? 'Видео' : 'Изображение';
+    return switch (media.kind) {
+      .video => 'Видео',
+      .image => 'Изображение',
+      .file => media.fileName ?? 'Файл',
+    };
   }
   return 'Сообщение';
 }

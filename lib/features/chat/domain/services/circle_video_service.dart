@@ -3,6 +3,22 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 
 class CircleVideoService() {
+  static const defaultQualityName = 'veryHigh';
+
+  static const List<String> qualityNames = ['medium', 'high', 'veryHigh'];
+
+  static String qualityLabel(String name) => switch (name) {
+    'medium' => 'Среднее · 480p',
+    'high' => 'Высокое · 720p',
+    _ => 'Full HD · 1080p',
+  };
+
+  static ResolutionPreset qualityPreset(String name) => switch (name) {
+    'medium' => .medium,
+    'high' => .high,
+    _ => .veryHigh,
+  };
+
   CameraController? _controller;
   bool _videoRecording = false;
 
@@ -14,12 +30,14 @@ class CircleVideoService() {
 
   bool get isVideoRecording => _videoRecording;
 
-  Future<CameraController?> ensureFrontPreview() async {
+  Future<CameraController?> ensureFrontPreview({
+    ResolutionPreset preset = .veryHigh,
+  }) async {
     final current = _controller;
     if (current != null && current.value.isInitialized) return current;
     final flight = _initFlight;
     if (flight != null) return flight;
-    final future = _doInitFrontPreview();
+    final future = _doInitFrontPreview(preset);
     _initFlight = future;
     try {
       return await future;
@@ -28,7 +46,7 @@ class CircleVideoService() {
     }
   }
 
-  Future<CameraController?> _doInitFrontPreview() async {
+  Future<CameraController?> _doInitFrontPreview(ResolutionPreset preset) async {
     try {
       await _controller?.dispose();
     } catch (_) {}
@@ -45,7 +63,7 @@ class CircleVideoService() {
     }
     if (front == null) return null;
 
-    final controller = CameraController(front, .high, enableAudio: true);
+    final controller = CameraController(front, preset, enableAudio: true);
     try {
       await controller.initialize();
     } catch (_) {
@@ -54,6 +72,12 @@ class CircleVideoService() {
       } catch (_) {}
       return null;
     }
+    try {
+      await controller.setFocusMode(.auto);
+    } catch (_) {}
+    try {
+      await controller.setExposureMode(.auto);
+    } catch (_) {}
     _controller = controller;
     return controller;
   }

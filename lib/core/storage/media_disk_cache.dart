@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-class MediaDiskCache {
+class MediaDiskCache() {
   static const _rootName = 'media_cache';
 
   static Future<Directory> resolveDir() async {
@@ -67,11 +67,7 @@ class MediaDiskCache {
     }
   }
 
-  Future<void> putBytes(
-    String key,
-    Uint8List bytes, {
-    int maxBytes = 0,
-  }) async {
+  Future<void> putBytes(String key, Uint8List bytes, {int maxBytes = 0}) async {
     if (bytes.isEmpty) return;
     try {
       final file = await _fileFor(key);

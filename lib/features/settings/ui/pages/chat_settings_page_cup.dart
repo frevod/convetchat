@@ -1,5 +1,6 @@
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
+import 'package:convetchat/features/chat/domain/services/circle_video_service.dart';
 import 'package:convetchat/features/chat/ui/widgets/reaction_picker.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -22,6 +23,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
   bool _swipeToReply = true;
   bool _quickReaction = true;
   String _quickEmoji = '❤️';
+  String _circleQuality = CircleVideoService.defaultQualityName;
 
   @override
   void initState() {
@@ -31,6 +33,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     _loadHideFlags();
     _loadAutoplay();
     _loadInteraction();
+    _loadCircleQuality();
   }
 
   Future<void> _loadMarkdown() async {
@@ -216,6 +219,26 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
     }
   }
 
+  Future<void> _loadCircleQuality() async {
+    try {
+      final quality = await getIt<ChatRepository>().getCircleVideoQuality();
+      if (!mounted) return;
+      setState(() => _circleQuality = quality);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] read circle quality failed', e, s);
+    }
+  }
+
+  Future<void> _setCircleQuality(String? quality) async {
+    if (quality == null) return;
+    setState(() => _circleQuality = quality);
+    try {
+      await getIt<ChatRepository>().setCircleVideoQuality(quality);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save circle quality failed', e, s);
+    }
+  }
+
   CupertinoListTile _switchTile({
     required IconData icon,
     required String title,
@@ -229,6 +252,12 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
       onTap: () => onChanged(!value),
     );
   }
+
+  static String _qualityShort(String name) => switch (name) {
+    'medium' => '480p',
+    'high' => '720p',
+    _ => '1080p',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -300,6 +329,30 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
                     value: _videoAutoplay,
                     onChanged: _setVideoAutoplay,
                   ),
+              ],
+            ),
+            CupertinoListSection.insetGrouped(
+              backgroundColor: CupertinoColors.transparent,
+              header: const Text('Качество видеосообщений'),
+              footer: const Text(
+                'Разрешение записи кружков. Выше качество — тяжелее файлы.',
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: CupertinoSlidingSegmentedControl<String>(
+                    groupValue: _circleQuality,
+                    onValueChanged: _setCircleQuality,
+                    children: {
+                      for (final name
+                          in CircleVideoService.qualityNames)
+                        name: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(_qualityShort(name)),
+                        ),
+                    },
+                  ),
+                ),
               ],
             ),
             CupertinoListSection.insetGrouped(

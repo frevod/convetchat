@@ -89,7 +89,7 @@ class const MessageSelectionAction({
   super.key,
   required final IconData icon,
   required final String tooltip,
-  required final VoidCallback onPressed,
+  required final VoidCallback? onPressed,
   final bool destructive = false,
 }) extends StatelessWidget {
   @override
@@ -123,8 +123,12 @@ Future<void> openForwardPickerAndPick(BuildContext context) async {
 class const MessageSelectionActions({super.key}) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final cubit = context.read<ChatCubit>();
-    final hasOwn = selectedHasOwnMessages(cubit);
+    final hasOwn = context.select(
+      (ChatCubit c) => c.state.selectedEventIds.any(
+        (id) =>
+            c.state.messages.any((m) => m.id == id && m.isOwn && !m.isState),
+      ),
+    );
 
     return Row(
       mainAxisSize: .min,
@@ -132,12 +136,14 @@ class const MessageSelectionActions({super.key}) extends StatelessWidget {
         MessageSelectionAction(
           icon: Icons.copy_rounded,
           tooltip: 'Копировать',
-          onPressed: () => cubit.copySelected(),
+          onPressed: () => context.read<ChatCubit>().copySelected(),
         ),
         MessageSelectionAction(
           icon: Icons.delete_outline_rounded,
           tooltip: 'Удалить',
-          onPressed: hasOwn ? () => cubit.deleteSelected() : () {},
+          onPressed: hasOwn
+              ? () => context.read<ChatCubit>().deleteSelected()
+              : null,
         ),
         MessageSelectionAction(
           icon: Icons.turn_right_rounded,

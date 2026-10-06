@@ -1,12 +1,9 @@
+import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
-
-enum MediaAttachTab() {
-  gallery,
-  file,
-}
 
 class const MediaAttachSheetAndr({super.key}) extends StatefulWidget {
   static Future<List<AssetEntity>?> show(BuildContext context) {
@@ -25,8 +22,6 @@ class const MediaAttachSheetAndr({super.key}) extends StatefulWidget {
 }
 
 class _MediaAttachSheetAndrState() extends State<MediaAttachSheetAndr> {
-  MediaAttachTab _tab = .gallery;
-
   PermissionState? _permission;
   AssetPathEntity? _album;
   List<AssetEntity> _assets = const [];
@@ -128,11 +123,9 @@ class _MediaAttachSheetAndrState() extends State<MediaAttachSheetAndr> {
     }
   }
 
-  void _onTabChanged(Set<String> next) {
-    if (next.isEmpty) return;
-    final value = next.first;
-    if (value == 'file') return;
-    setState(() => _tab = .gallery);
+  Future<void> _pickFiles() async {
+    await context.read<ChatCubit>().pickFiles();
+    if (mounted) Navigator.of(context).pop(<AssetEntity>[]);
   }
 
   void _toggle(AssetEntity asset) {
@@ -236,10 +229,9 @@ class _MediaAttachSheetAndrState() extends State<MediaAttachSheetAndr> {
   }
 
   Widget _buildBottomPanel(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        color: scheme.surfaceContainer,
+        color: Theme.of(context).colorScheme.surfaceContainer,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       padding: EdgeInsets.fromLTRB(
@@ -250,13 +242,16 @@ class _MediaAttachSheetAndrState() extends State<MediaAttachSheetAndr> {
       ),
 
       child: Center(
-        child: M3ESegmentedButton<String>(
-          segments: const [
-            M3ESegment(value: 'gallery', label: 'Галерея'),
-            M3ESegment(value: 'file', label: 'Файл'),
-          ],
-          selected: {_tab == .gallery ? 'gallery' : 'file'},
-          onSelectionChanged: _onTabChanged,
+        child: M3EButton.tonal(
+          onPressed: _pickFiles,
+          child: const Row(
+            mainAxisSize: .min,
+            children: [
+              Icon(Icons.folder_open_rounded),
+              SizedBox(width: 8),
+              Text('Файл'),
+            ],
+          ),
         ),
       ),
     );

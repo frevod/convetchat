@@ -9,6 +9,7 @@ import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/domain/services/circle_playback_coordinator.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
+import 'package:convetchat/features/chat/ui/widgets/file_message_andr.dart';
 import 'package:convetchat/features/chat/ui/widgets/video_player_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -29,6 +30,9 @@ class const MediaMessageAndr({
   @override
   Widget build(BuildContext context) {
     final media = message.media!;
+    if (media.kind == .file) {
+      return FileMessageAndr(message: message);
+    }
     if (media.kind == .video && media.isCircle) {
       return _CircleTile(
         message: message,
@@ -88,9 +92,7 @@ class _CircleTileState() extends State<_CircleTile> {
     var ready = widget.message.isOwn;
     if (!ready) {
       try {
-        ready = await context.read<ChatCubit>().isFullCached(
-          widget.message.id,
-        );
+        ready = await context.read<ChatCubit>().isFullCached(widget.message.id);
       } catch (_) {
         ready = false;
       }
@@ -98,8 +100,7 @@ class _CircleTileState() extends State<_CircleTile> {
     if (!mounted) return;
     setState(() => _fullReady = ready);
     if (ready &&
-        getIt<CirclePlaybackCoordinator>()
-            .consumeAutoplay(widget.message.id)) {
+        getIt<CirclePlaybackCoordinator>().consumeAutoplay(widget.message.id)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_toggle());
       });
@@ -292,8 +293,7 @@ class _CircleTileState() extends State<_CircleTile> {
   @override
   Widget build(BuildContext context) {
     final preview = widget.previewOnly;
-    final playing =
-        _playing && (_video != null || _mkController != null);
+    final playing = _playing && (_video != null || _mkController != null);
     final size = playing ? _CircleTile._expanded : _CircleTile._collapsed;
     return GestureDetector(
       onTap: preview || _sending ? null : _toggle,
@@ -360,8 +360,10 @@ class _CircleTileState() extends State<_CircleTile> {
   }
 }
 
-class const _ThumbBody({required final Future<Uint8List>? thumb, final bool blurred = false})
-    extends StatelessWidget {
+class const _ThumbBody({
+  required final Future<Uint8List>? thumb,
+  final bool blurred = false,
+}) extends StatelessWidget {
   static const _fallback = ColoredBox(color: Color(0xFF000000));
 
   @override
@@ -857,9 +859,7 @@ class const _MediaFrame({
                                       ),
                                     )
                                   else
-                                    _OverlayStatusIcon(
-                                      status: message.status!,
-                                    ),
+                                    _OverlayStatusIcon(status: message.status!),
                                 ],
                               ],
                             ),

@@ -65,7 +65,13 @@ class const MessageInputAndr({super.key}) extends StatelessWidget {
                           final picked = await FilePicker.pickFiles();
                           final files = picked
                               .where((f) => f.path != null)
-                              .map((f) => (path: f.path!, name: f.name))
+                              .map(
+                                (f) => (
+                                  path: f.path!,
+                                  name: f.name,
+                                  size: f.lengthSync(),
+                                ),
+                              )
                               .toList(growable: false);
                           if (files.isNotEmpty) {
                             await cubit.attachLocalFiles(files);

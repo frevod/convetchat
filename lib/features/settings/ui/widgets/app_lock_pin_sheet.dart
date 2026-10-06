@@ -15,9 +15,7 @@ enum AppLockPinMode() {
   change,
 }
 
-class AppLockPinSheet {
-  const new _();
-
+class const AppLockPinSheet._() {
   static Future<bool> showSetup(BuildContext context) =>
       _show(context, mode: AppLockPinMode.setup);
 
@@ -43,9 +41,8 @@ class AppLockPinSheet {
   }
 }
 
-class const _PinSheetBody({required this.mode}) extends StatefulWidget {
-  final AppLockPinMode mode;
-
+class const _PinSheetBody({required final AppLockPinMode mode})
+    extends StatefulWidget {
   @override
   State<_PinSheetBody> createState() => _PinSheetBodyState();
 }

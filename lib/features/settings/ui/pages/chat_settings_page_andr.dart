@@ -1,5 +1,6 @@
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
+import 'package:convetchat/features/chat/domain/services/circle_video_service.dart';
 import 'package:convetchat/features/chat/ui/widgets/reaction_picker.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -23,6 +24,7 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
   bool _swipeToReply = true;
   bool _quickReaction = true;
   String _quickEmoji = '❤️';
+  String _circleQuality = CircleVideoService.defaultQualityName;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
     _loadHideFlags();
     _loadAutoplay();
     _loadInteraction();
+    _loadCircleQuality();
   }
 
   Future<void> _loadMarkdown() async {
@@ -217,6 +220,29 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
     }
   }
 
+  Future<void> _loadCircleQuality() async {
+    try {
+      final quality = await getIt<ChatRepository>().getCircleVideoQuality();
+      if (!mounted) return;
+      setState(() => _circleQuality = quality);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] read circle quality failed', e, s);
+    }
+  }
+
+  Future<void> _onCircleQualityChanged(
+    List<M3EDropdownItem<String>> selected,
+  ) async {
+    if (selected.isEmpty) return;
+    final quality = selected.first.value;
+    setState(() => _circleQuality = quality);
+    try {
+      await getIt<ChatRepository>().setCircleVideoQuality(quality);
+    } catch (e, s) {
+      getIt<Talker>().error('[settings] save circle quality failed', e, s);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final formattedRows = [
@@ -305,6 +331,45 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
           onTap: _pickQuickEmoji,
         ),
     ];
+    final videoRows = [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Column(
+          crossAxisAlignment: .start,
+          children: [
+            Row(
+              spacing: 16,
+              children: [
+                const Icon(Icons.videocam_rounded),
+                Text(
+                  'Качество видеосообщений',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Разрешение записи кружков. Выше качество — тяжелее файлы.',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            M3EDropdownMenu<String>(
+              singleSelect: true,
+              showChipAnimation: false,
+              items: [
+                for (final name in CircleVideoService.qualityNames)
+                  M3EDropdownItem(
+                    label: CircleVideoService.qualityLabel(name),
+                    value: name,
+                    selected: _circleQuality == name,
+                  ),
+              ],
+              onSelectionChanged: _onCircleQualityChanged,
+            ),
+          ],
+        ),
+      ),
+    ];
     return Scaffold(
       appBar: M3EAppBar.top(
         shapeFamily: .round,
@@ -321,6 +386,11 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
             _rowsList(hiddenRows),
             const SizedBox(height: 12),
             _rowsList(autoplayRows),
+            const SizedBox(height: 12),
+            M3EList(
+              itemCount: videoRows.length,
+              itemBuilder: (context, index) => videoRows[index],
+            ),
             const SizedBox(height: 12),
             _rowsList(otherRows),
           ],

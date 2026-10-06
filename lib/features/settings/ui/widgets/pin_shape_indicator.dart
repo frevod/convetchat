@@ -3,9 +3,11 @@ import 'dart:math';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
-class PinShapeIndicator extends StatefulWidget {
-  const PinShapeIndicator({required this.filled, this.length = 4, super.key});
-
+class const PinShapeIndicator({
+  required this.filled,
+  this.length = 4,
+  super.key,
+}) extends StatefulWidget {
   final int filled;
   final int length;
 
@@ -13,7 +15,7 @@ class PinShapeIndicator extends StatefulWidget {
   State<PinShapeIndicator> createState() => _PinShapeIndicatorState();
 }
 
-class _PinShapeIndicatorState extends State<PinShapeIndicator> {
+class _PinShapeIndicatorState() extends State<PinShapeIndicator> {
   static const _pool = [
     M3EShapeKind.cookie4Sided,
     M3EShapeKind.cookie6Sided,

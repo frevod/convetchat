@@ -71,6 +71,15 @@ abstract class ChatRepository() {
     bool isCircle = false,
   });
 
+  Future<void> sendFile({
+    required String roomId,
+    required String filePath,
+    required String fileName,
+    int? size,
+    String? caption,
+    String? inReplyToEventId,
+  });
+
   Future<void> cancelSend({required String roomId, required String eventId});
 
   Future<void> retrySend({required String roomId, required String eventId});
@@ -164,4 +173,8 @@ abstract class ChatRepository() {
   Future<String> getQuickReactionEmoji();
 
   Future<void> setQuickReactionEmoji(String emoji);
+
+  Future<String> getCircleVideoQuality();
+
+  Future<void> setCircleVideoQuality(String quality);
 }

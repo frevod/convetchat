@@ -1,11 +1,8 @@
+import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
-
-enum MediaAttachTabCup() {
-  gallery,
-  file,
-}
 
 class const MediaAttachSheetCup({super.key}) extends StatefulWidget {
   static Future<List<AssetEntity>?> show(BuildContext context) {
@@ -45,8 +42,6 @@ class const MediaAttachSheetCup({super.key}) extends StatefulWidget {
 }
 
 class _MediaAttachSheetCupState() extends State<MediaAttachSheetCup> {
-  MediaAttachTabCup _tab = .gallery;
-
   PermissionState? _permission;
   AssetPathEntity? _album;
   List<AssetEntity> _assets = const [];
@@ -146,6 +141,11 @@ class _MediaAttachSheetCupState() extends State<MediaAttachSheetCup> {
       if (!mounted) return;
       setState(() => _loadingMore = false);
     }
+  }
+
+  Future<void> _pickFiles() async {
+    await context.read<ChatCubit>().pickFiles();
+    if (mounted) Navigator.of(context).pop(<AssetEntity>[]);
   }
 
   void _toggle(AssetEntity asset) {
@@ -259,22 +259,16 @@ class _MediaAttachSheetCupState() extends State<MediaAttachSheetCup> {
         12 + MediaQuery.viewPaddingOf(context).bottom,
       ),
       child: Center(
-        child: CupertinoSlidingSegmentedControl<String>(
-          groupValue: _tab == .gallery ? 'gallery' : 'file',
-          onValueChanged: (value) {
-            if (value == null || value == 'file') return;
-            setState(() => _tab = .gallery);
-          },
-          children: const {
-            'gallery': Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('Галерея'),
-            ),
-            'file': Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text('Файл'),
-            ),
-          },
+        child: CupertinoButton.filled(
+          onPressed: _pickFiles,
+          child: const Row(
+            mainAxisSize: .min,
+            children: [
+              Icon(CupertinoIcons.folder_open),
+              SizedBox(width: 8),
+              Text('Файл'),
+            ],
+          ),
         ),
       ),
     );

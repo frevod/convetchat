@@ -13,6 +13,8 @@ class const PendingMedia({
   final int? durationMs,
   final int? thumbWidth,
   final int? thumbHeight,
+  final bool isFile = false,
+  final int? size,
 }) extends Equatable {
   @override
   List<Object?> get props => [
@@ -26,5 +28,7 @@ class const PendingMedia({
     durationMs,
     thumbWidth,
     thumbHeight,
+    isFile,
+    size,
   ];
 }

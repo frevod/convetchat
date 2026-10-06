@@ -8,6 +8,7 @@ import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
+import 'package:convetchat/features/chat/ui/widgets/file_message_cup.dart';
 import 'package:convetchat/features/chat/ui/widgets/video_player_page.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -21,6 +22,9 @@ class const MediaMessageCup({
   @override
   Widget build(BuildContext context) {
     final media = message.media!;
+    if (media.kind == .file) {
+      return FileMessageCup(message: message);
+    }
     if (media.kind == .video) {
       return _VideoTile(message: message, onLinkTap: onLinkTap);
     }

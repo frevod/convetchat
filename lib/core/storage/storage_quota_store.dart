@@ -1,6 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-class StorageQuotaStore {
+class StorageQuotaStore() {
   static const _key = 'storage_max_bytes';
 
   static const int unlimited = 0;
@@ -11,14 +11,7 @@ class StorageQuotaStore {
   static const int gb5 = 5 * 1024 * 1024 * 1024;
   static const int gb10 = 10 * 1024 * 1024 * 1024;
 
-  static const List<int> options = [
-    unlimited,
-    mb512,
-    gb1,
-    gb2,
-    gb5,
-    gb10,
-  ];
+  static const List<int> options = [unlimited, mb512, gb1, gb2, gb5, gb10];
 
   int? _cache;
 
