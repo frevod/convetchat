@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_webview_window
   dynamic_color
+  fc_native_video_thumbnail
   file_selector_linux
   flutter_secure_storage_linux
   media_kit_libs_linux

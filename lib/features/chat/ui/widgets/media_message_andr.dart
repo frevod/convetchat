@@ -483,7 +483,11 @@ class _PhotoTileState() extends State<_PhotoTile> {
     return cubit.mediaBytes(eventId: widget.message.id, thumb: true);
   }
 
-  void _retry() => setState(() => _thumb = _load());
+  void _retry() {
+    setState(() {
+      _thumb = _load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -631,7 +635,11 @@ class _VideoTileState() extends State<_VideoTile> {
     return cubit.mediaBytes(eventId: widget.message.id, thumb: true);
   }
 
-  void _retryThumb() => setState(() => _thumb = _load());
+  void _retryThumb() {
+    setState(() {
+      _thumb = _load();
+    });
+  }
 
   void _open() {
     final cubit = context.read<ChatCubit>();

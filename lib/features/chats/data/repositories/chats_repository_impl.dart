@@ -77,13 +77,20 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
               showSender: !room.isDirectChat,
             ).replaceAll('\n', ' ').trim();
       final disp = room.getLocalizedDisplayname();
+      final roomAvatar = room.avatar?.toString();
+      final partnerAvatar = partnerId == null
+          ? null
+          : room
+                .unsafeGetUserFromMemoryOrFallback(partnerId)
+                .avatarUrl
+                ?.toString();
       final chat = ChatRoom(
         id: room.id,
         displayName: disp,
         lastMessage: preview,
         lastTime: lastEvent?.originServerTs,
         unreadCount: room.notificationCount,
-        avatarMxc: room.avatar?.toString(),
+        avatarMxc: roomAvatar ?? partnerAvatar,
         isDirect: room.isDirectChat,
         online: online,
         isMuted: room.pushRuleState == PushRuleState.dontNotify,

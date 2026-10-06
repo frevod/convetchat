@@ -37,6 +37,7 @@ dependencies:
   dynamic_color: ^2.1.0
   equatable: ^2.1.0
   file_picker: ^13.1.0
+  fc_native_video_thumbnail: ^3.0.1
   firebase_analytics: ^12.6.0
   firebase_core: ^4.15.0
   firebase_crashlytics: ^5.4.0
@@ -82,7 +83,6 @@ dependencies:
   televerse: ^3.6.0
   url_launcher: ^6.3.3
   video_player: ^2.14.1
-  video_thumbnail: ^0.5.6
 
 dev_dependencies:
   change_app_package_name: ^1.5.0
