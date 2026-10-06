@@ -35,7 +35,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:record/record.dart';
 import 'package:talker_flutter/talker_flutter.dart';
-import 'package:video_thumbnail/video_thumbnail.dart' as vt;
+import 'package:fc_native_video_thumbnail/fc_native_video_thumbnail.dart';
 
 class ChatCubit(
   final ChatRepository _repository, {
@@ -493,6 +493,23 @@ class ChatCubit(
               thumb = small.bytes;
               width = small.width;
               height = small.height;
+            }
+          } catch (_) {}
+        } else if (isVideo) {
+          try {
+            final frame = await FcNativeVideoThumbnail().saveThumbnailToBytes(
+              srcFile: file.path,
+              width: 320,
+              height: 320,
+              quality: 75,
+            );
+            if (frame != null && frame.isNotEmpty) {
+              final small = makeImageThumb(frame);
+              if (small != null) {
+                thumb = small.bytes;
+                width = small.width;
+                height = small.height;
+              }
             }
           } catch (_) {}
         }
@@ -1407,10 +1424,10 @@ class ChatCubit(
   static Future<({Uint8List bytes, int width, int height})?>
   _circleThumb(String path) async {
     try {
-      final frame = await vt.VideoThumbnail.thumbnailData(
-        video: path,
-        imageFormat: vt.ImageFormat.JPEG,
-        maxWidth: 320,
+      final frame = await FcNativeVideoThumbnail().saveThumbnailToBytes(
+        srcFile: path,
+        width: 320,
+        height: 320,
         quality: 75,
       );
       if (frame == null || frame.isEmpty) return null;

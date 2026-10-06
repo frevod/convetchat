@@ -98,7 +98,11 @@ class _PhotoTileState() extends State<_PhotoTile> {
     thumb: true,
   );
 
-  void _retry() => setState(() => _thumb = _load());
+  void _retry() {
+    setState(() {
+      _thumb = _load();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +239,11 @@ class _VideoTileState() extends State<_VideoTile> {
     thumb: true,
   );
 
-  void _retryThumb() => setState(() => _thumb = _load());
+  void _retryThumb() {
+    setState(() {
+      _thumb = _load();
+    });
+  }
 
   void _open() {
     final cubit = context.read<ChatCubit>();

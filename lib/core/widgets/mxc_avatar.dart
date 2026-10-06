@@ -43,14 +43,20 @@ class _MxcAvatarViewState() extends State<_MxcAvatarView> {
   @override
   void initState() {
     super.initState();
-    _bytes = _load();
+    _bytes = _load().timeout(
+      const Duration(seconds: 20),
+      onTimeout: () => null,
+    );
   }
 
   @override
   void didUpdateWidget(_MxcAvatarView old) {
     super.didUpdateWidget(old);
     if (old.mxc == widget.mxc && old.size == widget.size) return;
-    _bytes = _load();
+    _bytes = _load().timeout(
+      const Duration(seconds: 20),
+      onTimeout: () => null,
+    );
   }
 
   String get _cacheKey =>
