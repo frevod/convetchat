@@ -88,8 +88,7 @@ final class CallRepositoryImpl(final Client _client, final Talker _talker)
   }
 
   @override
-  Future<CallHandle> startVoiceCall(String roomId) =>
-      _join(roomId, ring: true);
+  Future<CallHandle> startVoiceCall(String roomId) => _join(roomId, ring: true);
 
   @override
   Future<CallHandle> answerVoiceCall(String roomId) =>
@@ -239,11 +238,14 @@ final class CallRepositoryImpl(final Client _client, final Talker _talker)
   Stream<domain.CallMediaEvent> mediaEvents(CallHandle handle) {
     final livekit = _livekit;
     if (livekit == null) return const Stream.empty();
-    return livekit.events.map((event) => switch (event) {
-      media.CallMediaEvent.remoteJoined => domain.CallMediaEvent.remoteJoined,
-      media.CallMediaEvent.remoteLeft => domain.CallMediaEvent.remoteLeft,
-      media.CallMediaEvent.e2eeFailed => domain.CallMediaEvent.e2eeFailed,
-    });
+    return livekit.events.map(
+      (event) => switch (event) {
+        media.CallMediaEvent.remoteJoined => domain.CallMediaEvent.remoteJoined,
+        media.CallMediaEvent.remoteAudio => domain.CallMediaEvent.remoteAudio,
+        media.CallMediaEvent.remoteLeft => domain.CallMediaEvent.remoteLeft,
+        media.CallMediaEvent.e2eeFailed => domain.CallMediaEvent.e2eeFailed,
+      },
+    );
   }
 
   @override

@@ -70,9 +70,13 @@ class CallCubit(
     switch (event) {
       case CallMediaEvent.remoteJoined:
         if (handle != null) unawaited(_repository.setCallConnected(handle));
-        emit(CallActive(roomId: roomId, isMuted: _muted, speakerOn: _speakerOn));
+        emit(
+          CallActive(roomId: roomId, isMuted: _muted, speakerOn: _speakerOn),
+        );
       case CallMediaEvent.remoteLeft:
         unawaited(hangup());
+      case CallMediaEvent.remoteAudio:
+        break;
       case CallMediaEvent.e2eeFailed:
         if (state is CallActive) {
           getIt<Talker>().error('[call] e2ee error during active call');

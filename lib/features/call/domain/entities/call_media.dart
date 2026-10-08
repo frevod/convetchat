@@ -1,1 +1,6 @@
-enum CallMediaEvent() { remoteJoined, remoteLeft, e2eeFailed }
+enum CallMediaEvent() {
+  remoteJoined,
+  remoteAudio,
+  remoteLeft,
+  e2eeFailed,
+}
