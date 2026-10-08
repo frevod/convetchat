@@ -3,12 +3,15 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  connectivity_plus
   desktop_webview_window
   dynamic_color
   fc_native_video_thumbnail
   file_selector_windows
   firebase_core
   flutter_secure_storage_windows
+  flutter_webrtc
+  livekit_client
   local_auth_windows
   media_kit_libs_windows_audio
   media_kit_video

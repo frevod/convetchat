@@ -2,9 +2,7 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/platform_style.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
-import 'package:flutter/material.dart' show Icons, Theme, showModalBottomSheet;
-import 'package:material_ui/material_ui.dart'
-    show Material, InkWell, IconButton;
+import 'package:material_ui/material_ui.dart';
 
 const List<String> kQuickReactions = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 

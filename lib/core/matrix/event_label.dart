@@ -17,6 +17,10 @@ bool isChatVisible(Event event) {
       event.type == EventTypes.refreshingLastEvent) {
     return false;
   }
+  if (event.type == 'org.matrix.msc4075.rtc.notification') return false;
+  if (event.type == 'org.matrix.msc3401.call.member') {
+    return event.content.isNotEmpty;
+  }
   if (event.type == PollEventContent.responseType) return false;
   if (event.type.startsWith('m.key.verification.')) return false;
   return true;
@@ -24,6 +28,8 @@ bool isChatVisible(Event event) {
 
 String eventLabel(Event event, {bool withSenderNamePrefix = false}) {
   if (event.type == EventTypes.refreshingLastEvent) return '';
+  final joinRuleLabel = _joinRuleChangeLabel(event);
+  if (joinRuleLabel != null) return joinRuleLabel;
   final text = event
       .calcLocalizedBodyFallback(
         ruMatrixLocalizations,
@@ -38,6 +44,28 @@ String eventLabel(Event event, {bool withSenderNamePrefix = false}) {
   return clean.isEmpty ? 'Сообщение' : clean;
 }
 
+String? _joinRuleChangeLabel(Event event) {
+  if (event.type != EventTypes.RoomJoinRules) return null;
+  final senderName = sanitizeForText(
+    event.senderFromMemoryOrFallback.calcDisplayname(
+      i18n: ruMatrixLocalizations,
+    ),
+  );
+  final rule = event.content.tryGet<String>('join_rule');
+  final label = switch (rule) {
+    'public' => 'открытая',
+    'invite' => 'по приглашениям',
+    'knock' || 'knock_restricted' => 'по заявкам',
+    'restricted' => 'ограниченная',
+    'private' => 'закрытая',
+    _ => null,
+  };
+  if (label == null) {
+    return ruMatrixLocalizations.changedTheJoinRules(senderName);
+  }
+  return ruMatrixLocalizations.changedTheJoinRulesTo(senderName, label);
+}
+
 String stripReplyFallback(String body) {
   final kept = body.split('\n').where((line) => !line.startsWith('>')).toList();
   if (kept.isNotEmpty && RegExp(r'^<@[^>]+>\s*$').hasMatch(kept.first)) {
@@ -48,6 +76,12 @@ String stripReplyFallback(String body) {
 
 String eventPreviewLabel(Event event, {required bool showSender}) {
   if (event.type == EventTypes.refreshingLastEvent) return '';
+  final joinRuleLabel = _joinRuleChangeLabel(event);
+  if (joinRuleLabel != null) return joinRuleLabel;
+  if (event.type == 'org.matrix.msc3401.call.member' ||
+      event.type == 'org.matrix.msc4075.rtc.notification') {
+    return 'Голосовой звонок';
+  }
   if (event.type == EventTypes.RoomPinnedEvents) {
     return _pinPreviewLabel(event);
   }

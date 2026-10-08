@@ -21,7 +21,21 @@ abstract class ChatRepository() {
 
   Future<void> leaveRoom(String roomId);
 
-  Stream<({bool online, DateTime? lastActive})> watchPartnerPresence(
+  Future<void> updateRoomName(String roomId, String name);
+
+  Future<void> updateRoomTopic(String roomId, String topic);
+
+  Future<void> updateRoomAvatar(String roomId, String path, String name);
+
+  Future<void> setRoomJoinRule(String roomId, String joinRule);
+
+  Stream<List<RoomParticipant>> watchKnockRequests(String roomId);
+
+  Future<void> acceptKnock({required String roomId, required String userId});
+
+  Future<void> rejectKnock({required String roomId, required String userId});
+
+  Stream<({bool online, bool busy, DateTime? lastActive})> watchPartnerPresence(
     String roomId,
   );
 

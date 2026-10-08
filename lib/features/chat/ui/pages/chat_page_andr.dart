@@ -1,5 +1,7 @@
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/core/widgets/mxc_avatar.dart';
+import 'package:convetchat/features/call/presentation/widgets/call_banner_andr.dart';
+import 'package:convetchat/features/call/presentation/widgets/call_button_andr.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/chat_message_list.dart';
 import 'package:convetchat/features/chat/ui/widgets/circle_preview_andr.dart';
@@ -28,6 +30,7 @@ class const ChatPageAndr({super.key}) extends StatelessWidget {
     final partnerOnline = context.select(
       (ChatCubit c) => c.state.partnerOnline,
     );
+    final partnerBusy = context.select((ChatCubit c) => c.state.partnerBusy);
     final partnerLastActive = context.select(
       (ChatCubit c) => c.state.partnerLastActive,
     );
@@ -36,6 +39,7 @@ class const ChatPageAndr({super.key}) extends StatelessWidget {
       typingUsers: typingUsers,
       partnerUserId: partnerUserId,
       partnerOnline: partnerOnline,
+      partnerBusy: partnerBusy,
       partnerLastActive: partnerLastActive,
     );
 
@@ -45,7 +49,8 @@ class const ChatPageAndr({super.key}) extends StatelessWidget {
         density: .compact,
         automaticallyImplyLeading: selectionCount == 0,
         leading: selectionCount > 0
-            ? IconButton(
+            ? M3EIconButton(
+                variant: .standard,
                 onPressed: cubit.clearSelection,
                 icon: const Icon(Icons.close_rounded),
                 tooltip: 'Снять выделение',
@@ -86,13 +91,22 @@ class const ChatPageAndr({super.key}) extends StatelessWidget {
                   ],
                 ),
               ),
-        actions: [if (selectionCount > 0) const MessageSelectionActions()],
+        actions: [
+          if (selectionCount > 0) const MessageSelectionActions(),
+          if (selectionCount == 0)
+            CallButtonAndr(
+              roomId: cubit.roomId,
+              roomName: roomName,
+              partnerUserId: partnerUserId,
+            ),
+        ],
       ),
 
       body: Stack(
         children: [
           Column(
             children: [
+              CallBannerAndr(roomId: cubit.roomId),
               const PinnedBanner(),
               Expanded(child: ChatMessageList()),
               MessageInput(),

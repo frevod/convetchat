@@ -1,4 +1,3 @@
-import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/features/chats/domain/entities/public_room.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
@@ -6,8 +5,7 @@ import 'package:cupertino_ui/cupertino_ui.dart';
 class const PublicRoomHitCup({
   super.key,
   required final PublicRoom room,
-  required final bool busy,
-  required final Future<void> Function() onJoin,
+  required final Future<void> Function() onPreview,
 }) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -18,7 +16,7 @@ class const PublicRoomHitCup({
         : '${room.topic} • ${room.memberCount} уч.';
     return GestureDetector(
       behavior: .opaque,
-      onTap: busy ? null : onJoin,
+      onTap: onPreview,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Row(
@@ -53,10 +51,7 @@ class const PublicRoomHitCup({
                 ],
               ),
             ),
-            if (busy)
-              const AdaptiveLoadingIndicator()
-            else
-              Icon(CupertinoIcons.arrow_right_circle, color: subColor),
+            Icon(CupertinoIcons.arrow_right_circle, color: subColor),
           ],
         ),
       ),

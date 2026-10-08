@@ -21,13 +21,10 @@ class const ResetAccountButton({super.key}) extends StatelessWidget {
       );
     }
     final danger = Theme.of(context).colorScheme.error;
-    return SizedBox(
-      width: double.infinity,
-      child: M3EButton.text(
-        size: .md,
-        onPressed: () => _onTap(context),
-        child: Text('Сбросить аккаунт', style: TextStyle(color: danger)),
-      ),
+    return M3EButton.text(
+      size: .md,
+      onPressed: () => _onTap(context),
+      child: Text('Сбросить аккаунт', style: TextStyle(color: danger)),
     );
   }
 

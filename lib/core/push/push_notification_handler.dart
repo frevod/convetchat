@@ -6,8 +6,11 @@ import 'dart:ui';
 import 'package:convetchat/core/logging/talker.dart';
 import 'package:convetchat/core/logging/talker_file_sink.dart';
 import 'package:convetchat/core/matrix/client_factory.dart';
+import 'package:convetchat/core/push/mention_filter.dart';
 import 'package:convetchat/core/push/push_config.dart';
 import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
+import 'package:convetchat/features/call/data/datasources/callkit_service.dart';
+import 'package:convetchat/features/call/data/datasources/matrix_rtc_signaling.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -46,6 +49,30 @@ Future<bool> contentPreviewEnabled() async {
   } catch (_) {
     return true;
   }
+}
+
+Future<bool> _isMentionsOnlyRoom(String roomId) async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(mentionsOnlyRoomsKey)?.contains(roomId) ?? false;
+  } catch (_) {
+    return false;
+  }
+}
+
+bool _mentionsUser(Event event, Client client) {
+  final userId = client.userID;
+  if (userId == null) return true;
+  final displayName = event.room
+      .unsafeGetUserFromMemoryOrFallback(userId)
+      .displayName;
+  final body = event.content.tryGet<String>('body') ?? '';
+  return mentionsUser(
+    content: event.content,
+    plainBody: body,
+    userId: userId,
+    displayName: displayName,
+  );
 }
 
 const AndroidNotificationAction _markAsReadAction = AndroidNotificationAction(
@@ -182,7 +209,9 @@ Future<void> onBackgroundMessage(RemoteMessage message) async {
   } on TimeoutException {
     settled = true;
     await showFallback();
-    talker.warning('[push:bg] enrich budget exceeded ($_backgroundEnrichBudget)');
+    talker.warning(
+      '[push:bg] enrich budget exceeded ($_backgroundEnrichBudget)',
+    );
   } catch (e, s) {
     settled = true;
     await showFallback();
@@ -200,8 +229,8 @@ Future<PushHandleResult> _enrich({
   try {
     client = await ClientFactory.createClient();
     if (!client.isLogged()) {
-      talker.warning('[push:bg] client not logged in, fallback required');
-      return PushHandleResult.failed;
+      talker.warning('[push:bg] client not logged in, suppressed');
+      return PushHandleResult.suppressed;
     }
     client
       ..backgroundSync = false
@@ -228,9 +257,9 @@ Future<PushHandleResult> _enrich({
   } finally {
     if (client != null) {
       try {
-        await client.dispose(closeDatabase: false).timeout(
-          const Duration(seconds: 3),
-        );
+        await client
+            .dispose(closeDatabase: false)
+            .timeout(const Duration(seconds: 3));
       } catch (e, s) {
         talker.warning('[push:bg] client dispose failed', e, s);
       }
@@ -268,6 +297,16 @@ Future<PushHandleResult> handlePushNotification({
 
   if (event == null) return PushHandleResult.suppressed;
 
+  if (event.type == 'org.matrix.msc4075.rtc.notification') {
+    await _showIncomingCall(
+      event: event,
+      roomId: roomId,
+      client: client,
+      talker: talker,
+    );
+    return PushHandleResult.shown;
+  }
+
   try {
     final result = client.pushruleEvaluator.match(event);
     if (!result.notify) {
@@ -275,6 +314,12 @@ Future<PushHandleResult> handlePushNotification({
     }
   } catch (e, s) {
     talker.warning('[push] pushrule evaluation failed', e, s);
+  }
+
+  if (await _isMentionsOnlyRoom(roomId) &&
+      event.type != EventTypes.Encrypted &&
+      !_mentionsUser(event, client)) {
+    return PushHandleResult.suppressed;
   }
 
   try {
@@ -310,6 +355,49 @@ Future<PushHandleResult> handlePushNotification({
   } catch (e, s) {
     talker.error('[push] show notification failed eventId=$eventId', e, s);
     return PushHandleResult.failed;
+  }
+}
+
+Future<void> _showIncomingCall({
+  required Event event,
+  required String roomId,
+  required Client client,
+  required Talker talker,
+}) async {
+  try {
+    final room = client.getRoomById(roomId);
+    final callkit = CallkitService(talker);
+    await callkit.showIncoming(
+      roomId: roomId,
+      callerName:
+          room?.getLocalizedDisplayname(ruMatrixLocalizations) ??
+          'Входящий звонок',
+    );
+    final lifetimeMs = event.content['lifetime'] as int?;
+    final deadline = DateTime.now().add(
+      Duration(milliseconds: lifetimeMs ?? 30000),
+    );
+    final signaling = MatrixRtcSignaling(client, talker);
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      try {
+        await client.oneShotSync().timeout(const Duration(seconds: 8));
+      } catch (_) {
+        break;
+      }
+      final current = client.getRoomById(roomId);
+      if (current == null) break;
+      if (signaling.ownMembership(current) != null) break;
+      final others = signaling
+          .activeMembers(current)
+          .where((m) => m.senderId != null && m.senderId != client.userID);
+      if (others.isEmpty) {
+        await callkit.endCall(roomId);
+        break;
+      }
+    }
+  } catch (e, s) {
+    talker.error('[push] incoming call failed', e, s);
   }
 }
 
@@ -404,7 +492,9 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
       const Duration(seconds: 20),
     );
     if (!client.isLogged()) {
-      talker.warning('[push:tap] action=$actionId skipped: client not logged in');
+      talker.warning(
+        '[push:tap] action=$actionId skipped: client not logged in',
+      );
       return;
     }
     client
@@ -429,7 +519,9 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
           break;
         }
         if (room == null) {
-          talker.warning('[push:tap] reply skipped: room not found roomId=$roomId');
+          talker.warning(
+            '[push:tap] reply skipped: room not found roomId=$roomId',
+          );
           break;
         }
         await room
@@ -456,9 +548,9 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
   } finally {
     if (client != null) {
       try {
-        await client.dispose(closeDatabase: false).timeout(
-          const Duration(seconds: 3),
-        );
+        await client
+            .dispose(closeDatabase: false)
+            .timeout(const Duration(seconds: 3));
       } catch (_) {}
     }
   }
@@ -486,7 +578,9 @@ Future<void> _muteRoom(
         .timeout(const Duration(seconds: 10));
     return;
   }
-  talker.warning('[push:tap] room not found, applying direct pushrule mute roomId=$roomId');
+  talker.warning(
+    '[push:tap] room not found, applying direct pushrule mute roomId=$roomId',
+  );
   await client
       .setPushRule(
         PushRuleKind.override,
@@ -512,7 +606,9 @@ Future<void> _markRead(
 ) async {
   final targetEventId = eventId ?? room?.lastEvent?.eventId;
   if (targetEventId == null) {
-    talker.warning('[push:tap] markRead skipped: no target event roomId=$roomId');
+    talker.warning(
+      '[push:tap] markRead skipped: no target event roomId=$roomId',
+    );
     return;
   }
   try {
@@ -523,7 +619,11 @@ Future<void> _markRead(
       return;
     }
   } catch (e, s) {
-    talker.warning('[push:tap] room.setReadMarker failed, using client fallback', e, s);
+    talker.warning(
+      '[push:tap] room.setReadMarker failed, using client fallback',
+      e,
+      s,
+    );
   }
   await client
       .setReadMarker(roomId, mFullyRead: targetEventId, mRead: targetEventId)
@@ -641,11 +741,7 @@ Future<void> _init(
       );
     }
   } catch (e, s) {
-    talker.error(
-      '[push] local notifications init failed',
-      e,
-      s,
-    );
+    talker.error('[push] local notifications init failed', e, s);
   }
 }
 
@@ -755,6 +851,16 @@ Future<String> _buildBody(Event event) async {
   if (event.type == EventTypes.Encrypted) {
     return 'Новое сообщение';
   }
+  if (event.type == PollEventContent.responseType) {
+    return 'Голос в опросе';
+  }
+  if (event.type == EventTypes.RoomPinnedEvents) {
+    return _pinPushLabel(event);
+  }
+  if (event.type == 'org.matrix.msc3401.call.member' ||
+      event.type == 'org.matrix.msc4075.rtc.notification') {
+    return 'Голосовой звонок';
+  }
   final label = event
       .calcLocalizedBodyFallback(
         ruMatrixLocalizations,
@@ -767,4 +873,17 @@ Future<String> _buildBody(Event event) async {
       .trim();
   if (label.isEmpty) return 'Сообщение';
   return label;
+}
+
+String _pinPushLabel(Event event) {
+  final pinned = event.content['pinned'];
+  final hasPinned = pinned is Iterable && pinned.isNotEmpty;
+  final own = event.senderId == event.room.client.userID;
+  if (own) {
+    return hasPinned ? 'Вы закрепили сообщение' : 'Вы открепили сообщение';
+  }
+  final name = event.senderFromMemoryOrFallback.calcDisplayname(
+    i18n: ruMatrixLocalizations,
+  );
+  return '$name ${hasPinned ? 'закрепил сообщение' : 'открепил сообщение'}';
 }

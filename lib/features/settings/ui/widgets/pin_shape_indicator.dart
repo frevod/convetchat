@@ -4,13 +4,10 @@ import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
 class const PinShapeIndicator({
-  required this.filled,
-  this.length = 4,
+  required final int filled,
+  final int length = 4,
   super.key,
 }) extends StatefulWidget {
-  final int filled;
-  final int length;
-
   @override
   State<PinShapeIndicator> createState() => _PinShapeIndicatorState();
 }

@@ -50,6 +50,10 @@ class const ChatMessage({
 
   final bool isDeleted = false,
 
+  final String? redactedVisibleBody,
+
+  final String? redactedBy,
+
   final bool isUndecryptable = false,
   final bool isEdited = false,
   final List<MessageReaction> reactions = const [],
@@ -84,6 +88,8 @@ class const ChatMessage({
     media,
     isState,
     isDeleted,
+    redactedVisibleBody,
+    redactedBy,
     isUndecryptable,
     isEdited,
     reactions,

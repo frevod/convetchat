@@ -219,6 +219,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
         child: ListView(
           children: [
             CupertinoListSection.insetGrouped(
+              header: const Text('Резервная копия'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 if (backupReady == null)
@@ -243,6 +244,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
               ],
             ),
             CupertinoListSection.insetGrouped(
+              header: const Text('Блокировка'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 CupertinoListTile(
@@ -251,8 +253,8 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
                   subtitle: _lockLoading
                       ? const Text('Загрузка…')
                       : _appLockEnabled
-                          ? const Text('Код-пароль включён')
-                          : null,
+                      ? const Text('Код-пароль включён')
+                      : null,
                   trailing: _lockLoading
                       ? const CupertinoActivityIndicator()
                       : CupertinoSwitch(
@@ -279,9 +281,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
                       value: _biometricsEnabled,
                       onChanged: (v) => unawaited(_setBiometrics(v)),
                     ),
-                    onTap: () => unawaited(
-                      _setBiometrics(!_biometricsEnabled),
-                    ),
+                    onTap: () => unawaited(_setBiometrics(!_biometricsEnabled)),
                   ),
               ],
             ),
@@ -294,9 +294,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
               ),
               children: [
                 if (_shareMode == null)
-                  const CupertinoListTile(
-                    title: Text('Загрузка…'),
-                  )
+                  const CupertinoListTile(title: Text('Загрузка…'))
                 else ...[
                   _shareModeTile(
                     ShareKeysWith.all,

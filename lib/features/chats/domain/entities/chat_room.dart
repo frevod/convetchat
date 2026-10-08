@@ -9,6 +9,8 @@ class const ChatRoom({
   required final String? avatarMxc,
   required final bool isDirect,
   required final bool online,
+  final bool busy = false,
+  final String? inviteReason,
   final bool isMuted = false,
   final bool isPinned = false,
 }) extends Equatable {
@@ -21,6 +23,8 @@ class const ChatRoom({
     String? Function()? avatarMxc,
     bool? isDirect,
     bool? online,
+    bool? busy,
+    String? Function()? inviteReason,
     bool? isMuted,
     bool? isPinned,
   }) {
@@ -33,6 +37,8 @@ class const ChatRoom({
       avatarMxc: avatarMxc != null ? avatarMxc() : this.avatarMxc,
       isDirect: isDirect ?? this.isDirect,
       online: online ?? this.online,
+      busy: busy ?? this.busy,
+      inviteReason: inviteReason != null ? inviteReason() : this.inviteReason,
       isMuted: isMuted ?? this.isMuted,
       isPinned: isPinned ?? this.isPinned,
     );
@@ -48,6 +54,8 @@ class const ChatRoom({
     avatarMxc,
     isDirect,
     online,
+    busy,
+    inviteReason,
     isMuted,
     isPinned,
   ];

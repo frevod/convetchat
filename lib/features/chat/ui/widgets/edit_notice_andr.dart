@@ -1,3 +1,4 @@
+import 'package:material_3_expressive/components/icon_buttons/m3e_icon_buttons.dart';
 import 'package:material_ui/material_ui.dart';
 
 class const EditNoticeAndr({
@@ -39,7 +40,8 @@ class const EditNoticeAndr({
                   ),
                 ),
               ),
-              IconButton(
+              M3EIconButton(
+                variant: .standard,
                 icon: const Icon(Icons.close_rounded),
                 tooltip: 'Отменить редактирование',
                 onPressed: onCancel,

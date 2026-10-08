@@ -6,6 +6,8 @@ String sendRestrictionText(ChatSendRestriction restriction) {
     ChatSendRestriction.none => '',
     ChatSendRestriction.invitePending =>
       'Приглашение ещё не принято — сообщения не отправляются',
+    ChatSendRestriction.knockPending =>
+      'Заявка отправлена — дождитесь, пока вас впустят',
     ChatSendRestriction.banned => 'Вы заблокированы в этом чате',
     ChatSendRestriction.left => 'Вы покинули этот чат',
     ChatSendRestriction.tombstoned => 'Чат закрыт',

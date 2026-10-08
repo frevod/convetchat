@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/firebase/telemetry_service.dart';
+import 'package:convetchat/core/matrix/server_capabilities.dart';
 import 'package:convetchat/core/push/push_service.dart';
 import 'package:convetchat/features/auth/domain/repositories/auth_repository.dart';
 import 'package:convetchat/features/chats/domain/entities/chat_room.dart';
@@ -48,12 +49,35 @@ class SettingsCubit(
     try {
       final client = getIt<Client>();
       final profile = await client.getUserProfile(client.userID!);
+      Capabilities? capabilities;
+      try {
+        capabilities = await client.getCapabilities();
+      } catch (_) {}
       if (isClosed) return;
+      final fields = <String, String>{};
+      profile.additionalProperties.forEach((key, value) {
+        if (value is String && value.trim().isNotEmpty) {
+          fields[key] = value;
+        }
+      });
+      final editable = {
+        for (final key in fields.keys)
+          if (ServerCapabilities.canEditProfileField(capabilities, key)) key,
+      };
+      final allowed = capabilities?.mProfileFields?.allowed;
+      final supported = ServerCapabilities.profileFieldsSupported(capabilities);
+      final addable = !supported || allowed == null
+          ? null
+          : allowed.where((key) => !fields.containsKey(key)).toList();
       emit(
         state.copyWith(
           displayName: () => profile.displayname,
           avatarMxc: () => profile.avatarUrl?.toString(),
           userId: () => client.userID,
+          customFields: () => fields,
+          editableProfileFields: () => editable,
+          addableProfileFields: () => addable,
+          profileFieldsSupported: () => supported,
         ),
       );
     } catch (e, s) {
@@ -177,6 +201,62 @@ class SettingsCubit(
     }
   }
 
+  bool _canWriteProfileField(String field) {
+    if (state.editableProfileFields.contains(field)) return true;
+    if (!state.profileFieldsSupported) return false;
+    final addable = state.addableProfileFields;
+    if (addable != null) return addable.contains(field);
+    return ServerCapabilities.isValidProfileFieldKey(field);
+  }
+
+  Future<void> updateProfileField(String field, String value) async {
+    if (isClosed || !_canWriteProfileField(field)) return;
+    final trimmed = value.trim();
+    emit(state.copyWith(profileSaving: () => true));
+    try {
+      final client = getIt<Client>();
+      final userId = client.userID!;
+      if (trimmed.isEmpty) {
+        await client.deleteProfileField(userId, field);
+      } else {
+        await client.setProfileField(userId, field, {field: trimmed});
+      }
+      if (isClosed) return;
+      final fields = Map<String, String>.of(state.customFields);
+      if (trimmed.isEmpty) {
+        fields.remove(field);
+      } else {
+        fields[field] = trimmed;
+      }
+      final editable = Set<String>.of(state.editableProfileFields);
+      final addable = state.addableProfileFields?.toList();
+      if (trimmed.isEmpty) {
+        editable.remove(field);
+      } else {
+        editable.add(field);
+        addable?.remove(field);
+      }
+      emit(
+        state.copyWith(
+          customFields: () => fields,
+          editableProfileFields: () => editable,
+          addableProfileFields: () => addable,
+          profileSaving: () => false,
+          errorMessage: () => null,
+        ),
+      );
+    } catch (e, s) {
+      if (isClosed) return;
+      getIt<Talker>().error('[settings] save profile field failed', e, s);
+      emit(
+        state.copyWith(
+          profileSaving: () => false,
+          errorMessage: () => 'Не удалось сохранить. Попробуйте снова',
+        ),
+      );
+    }
+  }
+
   void clearError() {
     emit(state.copyWith(errorMessage: () => null));
   }
@@ -197,11 +277,17 @@ class SettingsCubit(
     try {
       final client = getIt<Client>();
       final muted = client.allPushNotificationsMuted;
+      final ruleset = client.globalPushRules;
       emit(
         state.copyWith(
           notificationsEnabled: () => !muted,
-          reactionsEnabled: () => _reactionsEnabled(client),
-          invitesEnabled: () => _invitesEnabled(client),
+          invitesEnabled: () => _invitesEnabled(ruleset),
+          invitesSupported: () => _isRuleSupported(
+            ruleset,
+            PushRuleKind.override,
+            ServerCapabilities.inviteRuleId,
+            fallback: state.invitesSupported,
+          ),
         ),
       );
       unawaited(_restoreMentionDefaults(client));
@@ -209,11 +295,7 @@ class SettingsCubit(
   }
 
   Future<void> _restoreMentionDefaults(Client client) async {
-    const rules = [
-      '.m.rule.contains_user_name',
-      '.m.rule.contains_display_name',
-      '.m.rule.is_user_mention',
-    ];
+    const rules = ['.m.rule.contains_display_name', '.m.rule.is_user_mention'];
     final override = client.globalPushRules?.override;
     if (override == null) return;
     for (final rule in override) {
@@ -230,49 +312,64 @@ class SettingsCubit(
     }
   }
 
-  bool _reactionsEnabled(Client client) {
-    final rules = client.globalPushRules?.underride;
-    if (rules == null) return state.reactionsEnabled;
-    for (final rule in rules) {
-      if (rule.ruleId == '.m.rule.reaction') return !rule.enabled;
-    }
-    return true;
+  bool _isRuleSupported(
+    PushRuleSet? ruleset,
+    PushRuleKind kind,
+    String ruleId, {
+    required bool fallback,
+  }) {
+    if (ruleset == null) return fallback;
+    return ServerCapabilities.findPushRule(ruleset, kind, ruleId) != null;
   }
 
-  Future<void> toggleReactions(bool enabled) async {
-    if (isClosed) return;
-    emit(state.copyWith(reactionsEnabled: () => enabled));
-    try {
-      await getIt<Client>().setPushRuleEnabled(
-        PushRuleKind.underride,
-        '.m.rule.reaction',
-        !enabled,
-      );
-    } catch (e, s) {
-      getIt<Talker>().error('[settings] toggle reaction rule failed', e, s);
-    }
-    _syncNotificationsFromPushRules();
-  }
-
-  bool _invitesEnabled(Client client) {
-    final rules = client.globalPushRules?.override;
-    if (rules == null) return state.invitesEnabled;
-    for (final rule in rules) {
-      if (rule.ruleId == '.m.rule.invite_for_me') return rule.enabled;
-    }
-    return true;
+  bool _invitesEnabled(PushRuleSet? ruleset) {
+    final rule = ServerCapabilities.findPushRule(
+      ruleset,
+      PushRuleKind.override,
+      ServerCapabilities.inviteRuleId,
+    );
+    if (rule == null) return state.invitesEnabled;
+    return rule.enabled;
   }
 
   Future<void> toggleInvites(bool enabled) async {
     if (isClosed) return;
+    final client = getIt<Client>();
+    if (!_isRuleSupported(
+      client.globalPushRules,
+      PushRuleKind.override,
+      ServerCapabilities.inviteRuleId,
+      fallback: true,
+    )) {
+      emit(state.copyWith(invitesSupported: () => false));
+      getIt<Talker>().warning(
+        '[settings] invite rule missing on server, toggle ignored',
+      );
+      return;
+    }
+    final previous = state.invitesEnabled;
     emit(state.copyWith(invitesEnabled: () => enabled));
     try {
-      await getIt<Client>().setPushRuleEnabled(
+      await client.setPushRuleEnabled(
         PushRuleKind.override,
-        '.m.rule.invite_for_me',
+        ServerCapabilities.inviteRuleId,
         enabled,
       );
+    } on MatrixException catch (e, s) {
+      if (e.error == MatrixError.M_NOT_FOUND) {
+        emit(
+          state.copyWith(
+            invitesEnabled: () => previous,
+            invitesSupported: () => false,
+          ),
+        );
+        getIt<Talker>().warning('[settings] invite rule not found on server');
+      } else {
+        emit(state.copyWith(invitesEnabled: () => previous));
+        getIt<Talker>().error('[settings] toggle invite rule failed', e, s);
+      }
     } catch (e, s) {
+      emit(state.copyWith(invitesEnabled: () => previous));
       getIt<Talker>().error('[settings] toggle invite rule failed', e, s);
     }
     _syncNotificationsFromPushRules();
@@ -319,9 +416,7 @@ class SettingsCubit(
   }
 
   List<ChatRoom> categoryRooms(bool people) {
-    return state.notificationRooms
-        .where((r) => r.isDirect == people)
-        .toList();
+    return state.notificationRooms.where((r) => r.isDirect == people).toList();
   }
 
   List<ChatRoom> categoryExceptions(bool people) {
@@ -331,8 +426,7 @@ class SettingsCubit(
         .toList();
   }
 
-  Future<void> togglePeopleCategory(bool value) =>
-      _toggleCategory(true, value);
+  Future<void> togglePeopleCategory(bool value) => _toggleCategory(true, value);
 
   Future<void> toggleContentPreview(bool value) async {
     if (isClosed) return;
@@ -358,9 +452,7 @@ class SettingsCubit(
         groupsEnabled: people ? null : () => value,
         notificationRooms: () => [
           for (final r in state.notificationRooms)
-            flipped.containsKey(r.id)
-                ? r.copyWith(isMuted: flipped[r.id])
-                : r,
+            flipped.containsKey(r.id) ? r.copyWith(isMuted: flipped[r.id]) : r,
         ],
       ),
     );
@@ -399,8 +491,7 @@ class SettingsCubit(
 
   Future<void> _restoreExperimentalFlags() async {
     try {
-      final enabled = await _encryptionRepository
-          .isDehydratedDevicesEnabled();
+      final enabled = await _encryptionRepository.isDehydratedDevicesEnabled();
       if (isClosed) return;
       emit(state.copyWith(dehydratedDevicesEnabled: () => enabled));
     } catch (e, s) {

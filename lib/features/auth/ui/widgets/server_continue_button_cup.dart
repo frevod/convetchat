@@ -1,5 +1,6 @@
 import 'package:convetchat/app/adaptive/adaptive_buttons.dart';
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
+import 'package:convetchat/features/auth/domain/entities/auth_mode.dart';
 import 'package:convetchat/features/auth/ui/bloc/auth_cubit.dart';
 import 'package:convetchat/features/auth/ui/bloc/auth_state.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
@@ -22,7 +23,11 @@ class const ServerContinueButtonCup({super.key}) extends StatelessWidget {
             onPressed: cubit.verifyServer,
             child: isLoading
                 ? const AdaptiveLoadingIndicator()
-                : const Text('Продолжить'),
+                : Text(
+                    cubit.mode == AuthMode.register
+                        ? 'Зарегистрироваться'
+                        : 'Войти',
+                  ),
           ),
         );
       },

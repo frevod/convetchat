@@ -32,7 +32,7 @@ dependencies:
   characters: ^1.4.1
   crypto: ^3.0.7
   cupertino_icons: ^2.0.0
-  cupertino_ui: ^1.1.1
+  cupertino_ui: ^1.1.2
   dartz: ^0.10.1
   dynamic_color: ^2.1.0
   equatable: ^2.1.0
@@ -62,9 +62,9 @@ dependencies:
   just_audio_media_kit: ^2.1.0
   local_auth: ^3.0.2
   markdown: ^7.3.1
-  material_3_expressive: ^1.1.5
-  material_ui: ^1.5.0
-  matrix: ^13.0.0
+  material_3_expressive: ^1.1.6
+  material_ui: ^1.6.0
+  matrix: ^14.0.0
   media_kit: ^1.2.6
   media_kit_libs_audio: ^1.0.7
   media_kit_video: ^2.0.1
@@ -88,7 +88,9 @@ dependencies:
   camerawesome: ^2.5.0
   local_auth_android: ^2.2.0
   local_auth_darwin: ^2.0.4
-
+  livekit_client: ^2.13.1
+  flutter_webrtc: ^1.6.2+hotfix.4
+  flutter_callkit_incoming: ^3.1.6
 dev_dependencies:
   change_app_package_name: ^1.5.0
   flutter_launcher_icons: ^0.14.4

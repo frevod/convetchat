@@ -1,4 +1,5 @@
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
+import 'package:material_3_expressive/components/icon_buttons/m3e_icon_buttons.dart';
 import 'package:material_ui/material_ui.dart';
 
 class const ReplyWidgetAndr({
@@ -44,7 +45,8 @@ class const ReplyWidgetAndr({
                   ),
                 ),
               ),
-              IconButton(
+              M3EIconButton(
+                variant: .standard,
                 icon: const Icon(Icons.close_rounded),
                 tooltip: 'Отменить ответ',
                 onPressed: onCancel,

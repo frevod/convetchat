@@ -1,6 +1,6 @@
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/platform_style.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 

@@ -5,9 +5,10 @@ class const RoomParticipant({
   required final String displayName,
   final String? avatarMxc,
   final bool invited = false,
+  final bool knocked = false,
 }) extends Equatable {
   @override
-  List<Object?> get props => [id, displayName, avatarMxc, invited];
+  List<Object?> get props => [id, displayName, avatarMxc, invited, knocked];
 }
 
 class const RoomInfo({
@@ -19,6 +20,13 @@ class const RoomInfo({
   final bool encrypted = false,
   final bool isDirect = false,
   final List<RoomParticipant> members = const [],
+  final int knockCount = 0,
+  final String joinRule = 'invite',
+  final bool canEditName = false,
+  final bool canEditTopic = false,
+  final bool canEditAvatar = false,
+  final bool canInvite = false,
+  final bool canChangeJoinRule = false,
 }) extends Equatable {
   int get memberCount => members.length;
 
@@ -32,5 +40,12 @@ class const RoomInfo({
     encrypted,
     isDirect,
     members,
+    knockCount,
+    joinRule,
+    canEditName,
+    canEditTopic,
+    canEditAvatar,
+    canInvite,
+    canChangeJoinRule,
   ];
 }

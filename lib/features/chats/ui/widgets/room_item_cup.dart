@@ -109,7 +109,7 @@ class const RoomItemCup({super.key, required final ChatRoom room})
                       size: 52,
                       context: context,
                     ),
-                    if (room.isDirect && room.online)
+                    if (room.isDirect && (room.online || room.busy))
                       Positioned(
                         right: 0,
                         bottom: 0,
@@ -117,9 +117,13 @@ class const RoomItemCup({super.key, required final ChatRoom room})
                           width: 15,
                           height: 15,
                           decoration: BoxDecoration(
-                            color: CupertinoColors.systemBlue.resolveFrom(
-                              context,
-                            ),
+                            color: room.busy
+                                ? CupertinoColors.systemOrange.resolveFrom(
+                                    context,
+                                  )
+                                : CupertinoColors.systemBlue.resolveFrom(
+                                    context,
+                                  ),
                             shape: .circle,
                             border: Border.all(
                               color: CupertinoColors.systemBackground

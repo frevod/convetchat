@@ -1,6 +1,7 @@
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
 Future<String?> showForwardTargetPicker(BuildContext context) {
@@ -95,12 +96,10 @@ class const MessageSelectionAction({
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return IconButton(
+    return M3EIconButton(
+      variant: .standard,
       onPressed: onPressed,
       tooltip: tooltip,
-      visualDensity: .compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
       icon: Icon(icon, size: 22, color: destructive ? scheme.error : null),
     );
   }

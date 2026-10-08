@@ -1,5 +1,6 @@
 import 'package:convetchat/app/adaptive/adaptive_dialog.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_cubit.dart';
+import 'package:convetchat/features/settings/ui/widgets/settings_section_header.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
@@ -11,7 +12,6 @@ class const NotificationsPageAndr({super.key}) extends StatefulWidget {
 }
 
 class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
-
   @override
   Widget build(BuildContext context) {
     final cubit = context.watch<SettingsCubit>();
@@ -28,6 +28,7 @@ class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
       body: ListView(
         padding: const EdgeInsets.all(8.0),
         children: [
+          const SettingsSectionHeader(title: 'Общее'),
           M3EList(
             itemCount: 1,
             onTap: (index) {
@@ -47,6 +48,7 @@ class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
             },
           ),
           const SizedBox(height: 12),
+          const SettingsSectionHeader(title: 'Содержимое'),
           M3EList(
             itemCount: 1,
             onTap: (index) {
@@ -59,22 +61,18 @@ class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(
-                      height: 32,
-                      child: VerticalDivider(width: 1),
-                    ),
                     M3ESwitch(
                       value: state.contentPreview,
                       onChanged: cubit.toggleContentPreview,
                     ),
                     M3EIconButton(
                       icon: const Icon(Icons.help_outline_rounded),
+                      variant: .standard,
                       tooltip: 'Подробнее',
                       onPressed: () => AdaptiveDialog.show(
                         context: context,
                         title: 'Предпросмотр контента',
-                        subtitle:
-                            'Когда этот параметр включен, при входящем сообщении ConvetChat пытается локально расшифровать сообщение. Однако расшифровка отправляет в онлайн и это вынужденная мера. Если же выключено или расшифровать не удастся, то уведомление будет содержать просто информацию о том, что у вас новое сообщение',
+                        subtitle: 'Когда этот параметр включен, при входящем сообщении ConvetChat пытается локально расшифровать сообщение. Однако расшифровка отправляет в онлайн и это вынужденная мера. Если же выключено или расшифровать не удастся, то уведомление будет содержать просто информацию о том, что у вас новое сообщение',
                         actions: const [
                           AdaptiveDialogAction(
                             label: 'Понятно',
@@ -90,6 +88,7 @@ class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
             },
           ),
           const SizedBox(height: 12),
+          const SettingsSectionHeader(title: 'Категории'),
           M3EList(
             itemCount: 2,
             onTap: (index) {
@@ -132,31 +131,25 @@ class _NotificationsPageAndrState() extends State<NotificationsPageAndr> {
           ),
           const SizedBox(height: 12),
           M3EList(
-            itemCount: 2,
+            itemCount: 1,
             onTap: (index) {
-              if (index == 0) {
-                cubit.toggleReactions(!state.reactionsEnabled);
-              } else {
+              if (state.invitesSupported) {
                 cubit.toggleInvites(!state.invitesEnabled);
               }
             },
             itemBuilder: (context, index) {
-              if (index == 0) {
-                return M3EListItem(
-                  leading: const Icon(Icons.add_reaction_rounded),
-                  headline: 'Реакции',
-                  trailing: M3ESwitch(
-                    value: state.reactionsEnabled,
-                    onChanged: cubit.toggleReactions,
-                  ),
-                );
-              }
               return M3EListItem(
+                enabled: state.invitesSupported,
                 leading: const Icon(Icons.person_add_rounded),
                 headline: 'Приглашения',
+                supportingText: state.invitesSupported
+                    ? null
+                    : 'Сервер не поддерживает',
                 trailing: M3ESwitch(
                   value: state.invitesEnabled,
-                  onChanged: cubit.toggleInvites,
+                  onChanged: state.invitesSupported
+                      ? cubit.toggleInvites
+                      : null,
                 ),
               );
             },

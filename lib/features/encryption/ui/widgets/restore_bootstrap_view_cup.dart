@@ -6,8 +6,8 @@ import 'package:convetchat/features/encryption/ui/widgets/restore_devices_list.d
 import 'package:convetchat/features/encryption/ui/widgets/restore_key_input.dart';
 import 'package:convetchat/features/encryption/ui/widgets/verification/verification_sheet.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:material_ui/material_ui.dart';
 
 class const RestoreBootstrapViewCup({super.key}) extends StatelessWidget {
   @override
@@ -72,14 +72,14 @@ class const RestoreBootstrapViewCup({super.key}) extends StatelessWidget {
             devices: state.connectedDevices,
             scrollController: cubit.devicesScrollController,
           ),
-          const Row(
+          Row(
             children: [
               Expanded(child: Divider()),
-              Padding(
+              const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: Text('или'),
               ),
-              Expanded(child: Divider()),
+              const Expanded(child: Divider()),
             ],
           ),
         ] else ...[

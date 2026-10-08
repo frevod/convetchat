@@ -14,11 +14,9 @@ class const EncryptionBannerAndr({
     final background = setup
         ? scheme.secondaryContainer
         : scheme.errorContainer;
-    final foreground = setup
-        ? scheme.onSecondaryContainer
-        : scheme.onErrorContainer;
+
     return Padding(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: .circular(14),
@@ -26,25 +24,26 @@ class const EncryptionBannerAndr({
         ),
         child: Padding(
           padding: const EdgeInsets.all(8),
-          child: Row(
-            mainAxisSize: .min,
-            spacing: 5,
+          child: Column(
             children: [
-              Icon(
-                setup ? Icons.shield_outlined : Icons.lock_outline_rounded,
-                color: foreground,
+              Row(
+                mainAxisSize: .min,
+                children: [
+                  Expanded(
+                    child: Text(
+                      setup
+                          ? 'Резервная копия не настроена. Чтобы не потерять доступ к сообщениям, рекомендуется схранить ключ восстановления'
+                          : 'Резервная копия не восстановлена. Чтобы получить доступ к зашифрованным сообщениям подтвердите личность',
+                    ),
+                  ),
+                ],
               ),
-              Expanded(
-                child: Text(
-                  setup
-                      ? 'Шифрование ещё не настроено. Чтобы не потерять сообщения создайте резервную копию'
-                      : 'Восстановите доступ к зашифрованным сообщениям',
-                  style: TextStyle(color: foreground),
+              SizedBox(
+                width: .infinity,
+                child: M3EButton.filled(
+                  onPressed: () => context.go('/backup'),
+                  child: Text(setup ? 'Настроить' : 'Подтвердить'),
                 ),
-              ),
-              M3EButton.filled(
-                onPressed: () => context.go('/backup'),
-                child: Text(setup ? 'Настроить' : 'Подтвердить'),
               ),
             ],
           ),

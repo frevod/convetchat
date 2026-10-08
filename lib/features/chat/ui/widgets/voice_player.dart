@@ -5,7 +5,7 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/features/chat/domain/entities/voice_message.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
-import 'package:convetchat/features/chat/domain/services/voice_playback_service.dart';
+import 'package:convetchat/features/chat/data/services/voice_playback_service.dart';
 import 'package:convetchat/features/chat/ui/widgets/waveform_bars.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:talker_flutter/talker_flutter.dart';

@@ -8,6 +8,8 @@ list(APPEND FLUTTER_PLUGIN_LIST
   fc_native_video_thumbnail
   file_selector_linux
   flutter_secure_storage_linux
+  flutter_webrtc
+  livekit_client
   media_kit_libs_linux
   media_kit_video
   record_linux

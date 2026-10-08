@@ -1,7 +1,10 @@
 import 'dart:async';
 
 import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/features/call/presentation/pages/call_page.dart';
 import 'package:convetchat/features/chat/ui/pages/chat_page.dart';
+import 'package:convetchat/features/chat/ui/pages/invite_picker_page.dart';
+import 'package:convetchat/features/chat/ui/pages/knock_requests_page.dart';
 import 'package:convetchat/features/chat/ui/pages/room_info_page.dart';
 import 'package:convetchat/features/chats/ui/pages/create_group_page.dart';
 import 'package:convetchat/features/chats/ui/pages/room_directory_page.dart';
@@ -27,11 +30,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:matrix/matrix.dart';
 
+import '../features/auth/domain/entities/auth_mode.dart';
+import '../features/auth/ui/pages/login_callback_page.dart';
 import '../features/auth/ui/pages/server_page.dart';
 import '../features/chats/ui/pages/chats_page.dart';
 import '../features/home/ui/pages/home_page.dart';
 
-const _guestLocations = ['/welcome', '/server_choice'];
+const _guestLocations = ['/welcome', '/server_choice', '/login'];
 
 const _publicLocations = ['/', ..._guestLocations];
 
@@ -94,8 +99,33 @@ GoRouter createRouter() {
         builder: (context, state) => const WelcomePage(),
       ),
       GoRoute(
+        path: '/login',
+        builder: (context, state) => LoginCallbackPage(
+          token: state.uri.queryParameters['loginToken'],
+        ),
+      ),
+      GoRoute(
         path: '/server_choice',
-        builder: (context, state) => const ServerPage(),
+        builder: (context, state) {
+          final mode = state.extra is AuthMode
+              ? state.extra as AuthMode
+              : AuthMode.login;
+          return ServerPage(mode: mode);
+        },
+      ),
+      GoRoute(
+        path: '/call/:roomId',
+        builder: (context, state) {
+          final extra = state.extra;
+          final roomName = extra is Map
+              ? extra['roomName'] as String? ?? ''
+              : extra as String? ?? '';
+          return CallPage(
+            roomId: state.pathParameters['roomId']!,
+            roomName: roomName,
+            answer: state.uri.queryParameters['mode'] == 'answer',
+          );
+        },
       ),
       GoRoute(
         path: '/chat/:id',
@@ -108,6 +138,17 @@ GoRouter createRouter() {
             path: 'info',
             builder: (context, state) =>
                 RoomInfoPage(roomId: state.pathParameters['id']!),
+            routes: [
+              GoRoute(
+                path: 'knock',
+                builder: (context, state) => const KnockRequestsPage(),
+              ),
+              GoRoute(
+                path: 'invite',
+                builder: (context, state) =>
+                    InvitePickerPage(roomId: state.pathParameters['id']!),
+              ),
+            ],
           ),
         ],
       ),
@@ -148,8 +189,7 @@ GoRouter createRouter() {
         path: '/settings/notifications/exceptions',
         builder: (context, state) {
           final cubit = state.extra as SettingsCubit?;
-          final people =
-              state.uri.queryParameters['type'] != 'groups';
+          final people = state.uri.queryParameters['type'] != 'groups';
           if (cubit != null) {
             return BlocProvider.value(
               value: cubit,

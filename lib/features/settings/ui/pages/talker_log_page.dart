@@ -1,8 +1,11 @@
 import 'package:convetchat/core/di/locator.dart';
+import 'package:convetchat/core/logging/talker_file_sink.dart';
 import 'package:convetchat/core/utils/safe_text.dart';
-import 'package:flutter/material.dart' as material
+import 'package:material_ui/material_ui.dart'
+    as material
     show ScaffoldMessenger, SnackBar, Text;
 import 'package:flutter/services.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart'
     hide ScaffoldMessenger, ScaffoldMessengerState;
 import 'package:talker_flutter/talker_flutter.dart';
@@ -10,13 +13,29 @@ import 'package:talker_flutter/talker_flutter.dart';
 class const TalkerLogPage({super.key}) extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return material.ScaffoldMessenger(
-      child: TalkerScreen(
-        talker: getIt<Talker>(),
-        itemsBuilder: _safeItemBuilder,
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Очистить файл логов',
+        child: const Icon(Icons.delete_forever),
+        onPressed: () => _clearAll(context),
+      ),
+      body: material.ScaffoldMessenger(
+        child: TalkerScreen(
+          talker: getIt<Talker>(),
+          itemsBuilder: _safeItemBuilder,
+        ),
       ),
     );
   }
+}
+
+Future<void> _clearAll(BuildContext context) async {
+  getIt<Talker>().cleanHistory();
+  await TalkerFileSink.clear();
+  if (!context.mounted) return;
+  material.ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+    const material.SnackBar(content: material.Text('Логи и файл очищены')),
+  );
 }
 
 Widget _safeItemBuilder(BuildContext context, TalkerData data) {
@@ -26,9 +45,7 @@ Widget _safeItemBuilder(BuildContext context, TalkerData data) {
 
 void _copySafe(BuildContext context, TalkerData data) {
   final talker = getIt<Talker>();
-  final raw = data.generateTextMessage(
-    timeFormat: talker.settings.timeFormat,
-  );
+  final raw = data.generateTextMessage(timeFormat: talker.settings.timeFormat);
   Clipboard.setData(ClipboardData(text: sanitizeForText(raw)));
   material.ScaffoldMessenger.maybeOf(context)?.showSnackBar(
     const material.SnackBar(content: material.Text('Лог скопирован')),
@@ -39,7 +56,6 @@ class const _SafeTalkerCard({
   required final TalkerData data,
   required final TalkerScreenTheme theme,
 }) extends StatefulWidget {
-
   @override
   State<_SafeTalkerCard> createState() => _SafeTalkerCardState();
 }
@@ -61,8 +77,7 @@ class _SafeTalkerCardState() extends State<_SafeTalkerCard> {
             'Type: ${data.exception?.runtimeType ?? data.error.runtimeType}',
           )
         : null;
-    var errorMessage =
-        data.exception?.toString() ?? data.error?.toString();
+    var errorMessage = data.exception?.toString() ?? data.error?.toString();
     if ((errorMessage?.isNotEmpty ?? false) &&
         errorMessage!.contains('Source stack:')) {
       errorMessage =
@@ -112,15 +127,11 @@ class _SafeTalkerCardState() extends State<_SafeTalkerCard> {
                       ],
                     ),
                   ),
-                  SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      iconSize: 20,
-                      icon: Icon(Icons.copy, color: color),
-                      onPressed: () => _copySafe(context, data),
-                    ),
+                  M3EIconButton(
+                    variant: .standard,
+                    size: .xs,
+                    icon: Icon(Icons.copy, color: color),
+                    onPressed: () => _copySafe(context, data),
                   ),
                 ],
               ),

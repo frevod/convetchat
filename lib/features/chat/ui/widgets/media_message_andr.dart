@@ -7,7 +7,7 @@ import 'package:convetchat/core/platform_info.dart';
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/core/widgets/formatted_text.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
-import 'package:convetchat/features/chat/domain/services/circle_playback_coordinator.dart';
+import 'package:convetchat/features/chat/data/services/circle_playback_coordinator.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:convetchat/features/chat/ui/widgets/file_message_andr.dart';
 import 'package:convetchat/features/chat/ui/widgets/video_player_page.dart';
@@ -436,6 +436,14 @@ class _PhotoTileState() extends State<_PhotoTile> {
     if (widget.previewOnly || widget.message.isOwn) {
       if (!mounted) return;
       setState(() => _fullReady = true);
+      try {
+        final full = await context.read<ChatCubit>().mediaBytes(
+          eventId: widget.message.id,
+          thumb: false,
+        );
+        if (!mounted) return;
+        setState(() => _fullBytes = full);
+      } catch (_) {}
       return;
     }
     try {
@@ -497,9 +505,7 @@ class _PhotoTileState() extends State<_PhotoTile> {
     return FutureBuilder<Uint8List>(
       future: _thumb,
       builder: (context, snapshot) {
-        final storedFull = _fullBytes;
-        final full = _fullReady ? storedFull : null;
-        final bytes = full ?? snapshot.data;
+        final bytes = _fullBytes ?? snapshot.data;
         if (bytes != null) {
           final center = _downloading
               ? const SizedBox(
@@ -523,9 +529,9 @@ class _PhotoTileState() extends State<_PhotoTile> {
             onTap: preview
                 ? null
                 : _fullReady
-                ? () => _openViewer(context, full ?? bytes)
+                ? () => _openViewer(context, bytes)
                 : _download,
-            child: full != null
+            child: _fullReady
                 ? image
                 : ImageFiltered(
                     imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),

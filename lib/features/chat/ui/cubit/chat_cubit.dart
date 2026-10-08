@@ -13,13 +13,14 @@ import 'package:convetchat/core/platform_style.dart';
 import 'package:convetchat/core/push/push_service.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_send_restriction.dart';
+import 'package:convetchat/features/chat/domain/entities/room_info.dart';
 import 'package:convetchat/features/chat/domain/entities/circle_video.dart';
 import 'package:convetchat/features/chat/domain/entities/pending_media.dart';
 import 'package:convetchat/features/chat/domain/entities/record_mode.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
-import 'package:convetchat/features/chat/domain/services/circle_playback_coordinator.dart';
-import 'package:convetchat/features/chat/domain/services/circle_video_service.dart';
-import 'package:convetchat/features/chat/domain/services/voice_playback_service.dart';
+import 'package:convetchat/features/chat/data/services/circle_playback_coordinator.dart';
+import 'package:convetchat/features/chat/data/services/circle_video_service.dart';
+import 'package:convetchat/features/chat/data/services/voice_playback_service.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_state.dart';
 import 'package:convetchat/features/encryption/domain/repositories/encryption_repository.dart';
 import 'package:convetchat/features/encryption/ui/widgets/verification/verification_sheet.dart';
@@ -68,6 +69,7 @@ class ChatCubit(
       emit(
         state.copyWith(
           partnerOnline: () => presence.online,
+          partnerBusy: () => presence.busy,
           partnerLastActive: () => presence.lastActive,
         ),
       );
@@ -81,6 +83,16 @@ class ChatCubit(
     _pinnedSubscription = _repository.watchPinnedEvents(_roomId).listen((ids) {
       if (isClosed) return;
       emit(state.copyWith(pinnedEventIds: () => ids));
+    });
+    _roomInfoSubscription = _repository.watchRoomInfo(_roomId).listen((info) {
+      if (isClosed) return;
+      emit(
+        state.copyWith(
+          roomName: () => info.name,
+          avatarMxc: () => info.avatarMxc,
+          partnerUserId: () => _repository.directChatPartner(_roomId),
+        ),
+      );
     });
     _voiceCompletedSubscription = getIt<VoicePlaybackService>().completed
         .listen((eventId) {
@@ -157,10 +169,13 @@ class ChatCubit(
   late final StreamSubscription<List<ChatMessage>> _subscription;
   late final StreamSubscription<List<({String id, String name})>>
   _typingSubscription;
-  late final StreamSubscription<({bool online, DateTime? lastActive})>
+  late final StreamSubscription<
+    ({bool online, bool busy, DateTime? lastActive})
+  >
   _presenceSubscription;
   late final StreamSubscription<ChatSendRestriction> _restrictionSubscription;
   late final StreamSubscription<List<String>> _pinnedSubscription;
+  late final StreamSubscription<RoomInfo> _roomInfoSubscription;
   late final StreamSubscription<String> _voiceCompletedSubscription;
 
   String get roomId => _roomId;
@@ -225,6 +240,7 @@ class ChatCubit(
     unawaited(_presenceSubscription.cancel());
     unawaited(_restrictionSubscription.cancel());
     unawaited(_pinnedSubscription.cancel());
+    unawaited(_roomInfoSubscription.cancel());
     unawaited(_voiceCompletedSubscription.cancel());
     _highlightTimer?.cancel();
     _recordTick?.cancel();
@@ -1343,7 +1359,7 @@ class ChatCubit(
       if (isClosed || generation != _recordGeneration) return;
       if (!ready) {
         _resetRecordFlags();
-        getIt<Talker>().error('[chat] awesome camera not ready');
+        getIt<Talker>().error('[chat] circle recording skipped: camera not ready');
         emit(state.copyWith(errorMessage: () => 'Не удалось включить камеру'));
         return;
       }
@@ -1606,6 +1622,10 @@ class ChatCubit(
         }
         return;
       }
+      final recordedExists = await File(
+        videoPath,
+      ).exists().catchError((_) => false);
+      if (!recordedExists) throw Exception('Пустая запись');
       try {
         final thumb = await _circleThumb(videoPath);
         await _repository.sendMedia(
@@ -1722,24 +1742,18 @@ class ChatCubit(
   Future<void> cancelCircleRecording() async {
     _recordGeneration++;
     final service = getIt<CircleVideoService>();
-    if (!state.isRecording && !service.isVideoRecording) return;
+    if (!state.isRecording && !service.isVideoRecording) {
+      try {
+        await service.disposePreview();
+      } catch (_) {}
+      return;
+    }
 
     inputController.clear();
     _recordTick?.cancel();
     _circleAutoStop?.cancel();
     _recordWatch?.stop();
     _recordWatch = null;
-    if (!isClosed) {
-      emit(
-        state.copyWith(
-          isRecording: () => false,
-          recordElapsed: () => Duration.zero,
-          recordLevels: () => const <double>[],
-          recordLocked: () => false,
-          circleReady: () => false,
-        ),
-      );
-    }
     try {
       if (await _repository.isNewCameraApiEnabled()) {
         await service.abortAwesomeRecording();
@@ -1752,6 +1766,17 @@ class ChatCubit(
         }
       }
     } catch (_) {}
+    if (!isClosed) {
+      emit(
+        state.copyWith(
+          isRecording: () => false,
+          recordElapsed: () => Duration.zero,
+          recordLevels: () => const <double>[],
+          recordLocked: () => false,
+          circleReady: () => false,
+        ),
+      );
+    }
   }
 
   Future<void> _cancelVoiceRecording() async {

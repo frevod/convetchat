@@ -6,6 +6,7 @@ import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/event_label.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
 import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
+import 'package:convetchat/core/matrix/server_capabilities.dart';
 import 'package:convetchat/core/storage/media_disk_cache.dart';
 import 'package:convetchat/core/storage/storage_quota_store.dart';
 import 'package:convetchat/core/utils/emoji.dart';
@@ -110,7 +111,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
 
   @override
   String roomName(String roomId) =>
-      _room(roomId)?.getLocalizedDisplayname() ?? 'Чат';
+      _room(roomId)?.getLocalizedDisplayname(ruMatrixLocalizations) ?? 'Чат';
 
   @override
   String? roomAvatar(String roomId) {
@@ -151,9 +152,12 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
             .map(
               (user) => RoomParticipant(
                 id: user.id,
-                displayName: user.calcDisplayname().trim().isEmpty
+                displayName: user
+                        .calcDisplayname(i18n: ruMatrixLocalizations)
+                        .trim()
+                        .isEmpty
                     ? user.id
-                    : user.calcDisplayname(),
+                    : user.calcDisplayname(i18n: ruMatrixLocalizations),
                 avatarMxc: user.avatarUrl?.toString(),
                 invited: user.membership == Membership.invite,
               ),
@@ -167,14 +171,77 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
           });
     return RoomInfo(
       roomId: roomId,
-      name: room.getLocalizedDisplayname(),
+      name: room.getLocalizedDisplayname(ruMatrixLocalizations),
       topic: room.topic,
       avatarMxc: roomAvatar(roomId),
       canonicalAlias: alias.isEmpty ? null : alias,
       encrypted: room.encrypted,
       isDirect: room.isDirectChat,
       members: members,
+      knockCount: room.getParticipants([Membership.knock]).length,
+      joinRule: room.joinRules?.text ?? ServerCapabilities.publicJoinRule,
+      canEditName: room.canChangeStateEvent(EventTypes.RoomName),
+      canEditTopic: room.canChangeStateEvent(EventTypes.RoomTopic),
+      canEditAvatar: room.canChangeStateEvent(EventTypes.RoomAvatar),
+      canInvite: room.canInvite,
+      canChangeJoinRule: room.canChangeJoinRules,
     );
+  }
+
+  @override
+  Stream<List<RoomParticipant>> watchKnockRequests(String roomId) async* {
+    yield _knockRequestsSnapshot(roomId);
+    await for (final _ in _client.onSync.stream) {
+      yield _knockRequestsSnapshot(roomId);
+    }
+  }
+
+  List<RoomParticipant> _knockRequestsSnapshot(String roomId) {
+    final room = _room(roomId);
+    if (room == null) return const [];
+    final requests =
+        room
+            .getParticipants([Membership.knock])
+            .map(
+              (user) => RoomParticipant(
+                id: user.id,
+                displayName: user
+                        .calcDisplayname(i18n: ruMatrixLocalizations)
+                        .trim()
+                        .isEmpty
+                    ? user.id
+                    : user.calcDisplayname(i18n: ruMatrixLocalizations),
+                avatarMxc: user.avatarUrl?.toString(),
+                knocked: true,
+              ),
+            )
+            .toList()
+          ..sort(
+            (a, b) => a.displayName.toLowerCase().compareTo(
+              b.displayName.toLowerCase(),
+            ),
+          );
+    return requests;
+  }
+
+  @override
+  Future<void> acceptKnock({
+    required String roomId,
+    required String userId,
+  }) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    await room.invite(userId);
+  }
+
+  @override
+  Future<void> rejectKnock({
+    required String roomId,
+    required String userId,
+  }) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    await room.kick(userId);
   }
 
   @override
@@ -182,6 +249,39 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     final room = _room(roomId);
     if (room == null) return;
     await room.leave();
+  }
+
+  @override
+  Future<void> updateRoomName(String roomId, String name) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    await room.setName(name.trim());
+  }
+
+  @override
+  Future<void> updateRoomTopic(String roomId, String topic) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    await room.setDescription(topic.trim());
+  }
+
+  @override
+  Future<void> updateRoomAvatar(String roomId, String path, String name) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    final bytes = await File(path).readAsBytes();
+    await room.setAvatar(MatrixImageFile(bytes: bytes, name: name));
+  }
+
+  @override
+  Future<void> setRoomJoinRule(String roomId, String joinRule) async {
+    final room = _room(roomId);
+    if (room == null) throw Exception('Комната не найдена');
+    final rule = JoinRules.values.singleWhere(
+      (rule) => rule.text == joinRule,
+      orElse: () => JoinRules.invite,
+    );
+    await room.setJoinRules(rule);
   }
 
   @override
@@ -208,19 +308,23 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   }
 
   @override
-  Stream<({bool online, DateTime? lastActive})> watchPartnerPresence(
+  Stream<({bool online, bool busy, DateTime? lastActive})> watchPartnerPresence(
     String roomId,
   ) async* {
     final room = _room(roomId);
     final partnerId = room?.directChatMatrixID;
     if (room == null || partnerId == null) {
-      yield (online: false, lastActive: null);
+      yield (online: false, busy: false, lastActive: null);
       return;
     }
-    ({bool online, DateTime? lastActive}) map([CachedPresence? p]) {
+    ({bool online, bool busy, DateTime? lastActive}) map([CachedPresence? p]) {
       final online =
           p?.presence == PresenceType.online || p?.currentlyActive == true;
-      return (online: online, lastActive: p?.lastActiveTimestamp);
+      return (
+        online: online,
+        busy: p?.presence == PresenceType.unavailable,
+        lastActive: p?.lastActiveTimestamp,
+      );
     }
 
     try {
@@ -230,7 +334,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       );
       yield map(cached);
     } catch (_) {
-      yield (online: false, lastActive: null);
+      yield (online: false, busy: false, lastActive: null);
     }
     await for (final p in _client.onPresenceChanged.stream.where(
       (p) => p.userid == partnerId,
@@ -269,10 +373,11 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
     switch (room.membership) {
       case Membership.invite:
         return ChatSendRestriction.invitePending;
+      case Membership.knock:
+        return ChatSendRestriction.knockPending;
       case Membership.ban:
         return ChatSendRestriction.banned;
       case Membership.leave:
-      case Membership.knock:
         return ChatSendRestriction.left;
       case Membership.join:
         break;
@@ -922,7 +1027,8 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
 
   Future<int> _uploadLimit() async {
     try {
-      final size = (await _client.getConfig()).mUploadSize;
+      final size = (await _client.getConfig(cacheLifetime: Duration.zero))
+          .mUploadSize;
       if (size != null && size > 0) return size;
     } catch (_) {}
     return _fallbackUploadBytes;
@@ -1101,8 +1207,20 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       byId[event.eventId] = event.getDisplayEvent(timeline);
     }
     final hidden = _hiddenCache[room.id] ?? const <String>{};
+    final creditedJoins = <String>{};
+    final skipRedundantJoins = <String>{};
+    for (final event in timeline.events) {
+      if (event.type != 'org.matrix.msc3401.call.member') continue;
+      final key = event.stateKey ?? event.senderId;
+      if (event.content.isEmpty) {
+        creditedJoins.remove(key);
+      } else if (!creditedJoins.add(key)) {
+        skipRedundantJoins.add(event.eventId);
+      }
+    }
     return timeline.events
         .where(isChatVisible)
+        .where((event) => !skipRedundantJoins.contains(event.eventId))
         .where((event) => !hidden.contains(event.eventId))
         .where((event) => _hideDeletedCache != true || !event.redacted)
         .where(
@@ -1164,6 +1282,8 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
             media: media,
             isState: state,
             isDeleted: event.redacted,
+            redactedVisibleBody: _redactedVisibleBody(room, event, display),
+            redactedBy: _redactedBy(room, event),
             isEdited: !state && display.eventId != event.eventId,
             isUndecryptable:
                 !state &&
@@ -1175,6 +1295,22 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
           );
         })
         .toList();
+  }
+
+  static String? _redactedVisibleBody(Room room, Event event, Event display) {
+    if (!room.canRedact || !event.redacted) return null;
+    if (isStateEvent(event)) return null;
+    final raw = display.content.tryGet<String>('body') ?? '';
+    final clean = sanitizeForText(stripReplyFallback(raw));
+    if (clean.isEmpty) return null;
+    return clean;
+  }
+
+  static String? _redactedBy(Room room, Event event) {
+    if (!room.canRedact || !event.redacted) return null;
+    final redaction = event.redactedBecause;
+    if (redaction == null) return null;
+    return _senderName(room, redaction.senderId);
   }
 
   static List<SeenByUser> _seenBy(
@@ -1194,7 +1330,9 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
         result.add(
           SeenByUser(
             id: userId,
-            displayName: receipt.user.calcDisplayname(),
+            displayName: receipt.user.calcDisplayname(
+              i18n: ruMatrixLocalizations,
+            ),
             avatarMxc: receipt.user.avatarUrl?.toString(),
           ),
         );
@@ -1220,6 +1358,13 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
         senderName: _senderName(room, event.senderId),
       );
     }
+    if (display.type == 'org.matrix.msc3401.call.member') {
+      return _callLabel(
+        content: display.content,
+        isOwn: event.senderId == room.client.userID,
+        senderName: _senderName(room, event.senderId),
+      );
+    }
     if (!isStateEvent(display)) {
       final raw = display.content.tryGet<String>('body') ?? '';
       final clean = sanitizeForText(stripReplyFallback(raw));
@@ -1239,6 +1384,18 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       return hasPinned ? 'Вы закрепили сообщение' : 'Вы открепили сообщение';
     }
     return '$senderName ${hasPinned ? 'закрепил сообщение' : 'открепил сообщение'}';
+  }
+
+  static String _callLabel({
+    required Map<String, Object?> content,
+    required bool isOwn,
+    required String senderName,
+  }) {
+    final kind = content['m.call.intent'] == 'video'
+        ? 'видеозвонок'
+        : 'голосовой звонок';
+    if (isOwn) return 'Вы начали $kind';
+    return '$senderName начал $kind';
   }
 
   static VoiceMessage? _voice(Event event) {
@@ -1464,7 +1621,7 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
   static String _senderName(Room room, String senderId) {
     final name = room
         .unsafeGetUserFromMemoryOrFallback(senderId)
-        .calcDisplayname();
+        .calcDisplayname(i18n: ruMatrixLocalizations);
     if (name.isNotEmpty) return sanitizeForText(name);
     final local = senderId.split(':').first;
     final fallback = local.startsWith('@') ? local.substring(1) : senderId;
@@ -1517,7 +1674,10 @@ class ChatRepositoryImpl(final Client _client) implements ChatRepository {
       if (r.id == exceptRoomId) continue;
       if (r.membership != Membership.join) continue;
       if ((r.id == ownId) && r.directChatMatrixID == ownId) continue;
-      targets.add((id: r.id, name: r.getLocalizedDisplayname()));
+      targets.add((
+        id: r.id,
+        name: r.getLocalizedDisplayname(ruMatrixLocalizations),
+      ));
     }
     targets.sort(
       (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),

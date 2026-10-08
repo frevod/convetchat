@@ -35,6 +35,7 @@ class const ChatState({
 
   final String? partnerUserId,
   final bool partnerOnline = false,
+  final bool partnerBusy = false,
   final DateTime? partnerLastActive,
   final List<({String id, String name})> typingUsers = const [],
 
@@ -79,6 +80,7 @@ class const ChatState({
     bool Function()? circleReady,
     String? Function()? partnerUserId,
     bool Function()? partnerOnline,
+    bool Function()? partnerBusy,
     DateTime? Function()? partnerLastActive,
     List<({String id, String name})> Function()? typingUsers,
     ChatSendRestriction Function()? sendRestriction,
@@ -128,6 +130,7 @@ class const ChatState({
       partnerOnline: partnerOnline != null
           ? partnerOnline()
           : this.partnerOnline,
+      partnerBusy: partnerBusy != null ? partnerBusy() : this.partnerBusy,
       partnerLastActive: partnerLastActive != null
           ? partnerLastActive()
           : this.partnerLastActive,
@@ -186,6 +189,7 @@ class const ChatState({
     circleReady,
     partnerUserId,
     partnerOnline,
+    partnerBusy,
     partnerLastActive,
     typingUsers,
     sendRestriction,

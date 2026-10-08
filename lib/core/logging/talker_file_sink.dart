@@ -53,6 +53,26 @@ abstract final class TalkerFileSink() {
     } catch (_) {}
   }
 
+  static Future<void> clear() async {
+    _buffer.clear();
+    try {
+      final file = _file;
+      if (file != null) {
+        if (await file.exists()) {
+          await file.writeAsString('', mode: FileMode.write);
+        }
+        final backup = File('${file.parent.path}/$_backupFileName');
+        if (await backup.exists()) await backup.delete();
+        return;
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final f = File('${dir.path}/$_fileName');
+      if (await f.exists()) await f.writeAsString('', mode: FileMode.write);
+      final b = File('${dir.path}/$_backupFileName');
+      if (await b.exists()) await b.delete();
+    } catch (_) {}
+  }
+
   static Future<void> _append(String message) async {
     try {
       await _file?.writeAsString('$message\n', mode: FileMode.append);

@@ -3,10 +3,14 @@ import 'dart:io';
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
 import 'package:convetchat/app/adaptive/adaptive_text_field.dart';
+import 'package:convetchat/core/presence/presence_mode.dart';
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/core/widgets/mxc_avatar.dart';
+import 'package:convetchat/features/settings/ui/cubit/presence_cubit.dart';
+import 'package:convetchat/features/settings/ui/cubit/presence_state.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_cubit.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_state.dart';
+import 'package:convetchat/features/settings/ui/widgets/profile_field_sheet.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
@@ -106,11 +110,92 @@ class _ProfilePageCupState() extends State<ProfilePageCup> {
                     _buildNameButton(state),
                   ],
                 ),
+                if (state.profileFieldsSupported &&
+                    state.customFields.isNotEmpty)
+                  _CustomFieldsSection(state: state),
+                BlocBuilder<PresenceCubit, PresenceState>(
+                  builder: (context, presence) {
+                    if (presence.isLoading || !presence.supported) {
+                      return const SizedBox.shrink();
+                    }
+                    return CupertinoListSection.insetGrouped(
+                      header: const Text('Статус'),
+                      children: [
+                        CupertinoSlidingSegmentedControl<PresenceMode>(
+                          groupValue: presence.mode,
+                          children: const {
+                            PresenceMode.online: Text('В сети'),
+                            PresenceMode.busy: Text('Занят'),
+                            PresenceMode.offline: Text('Невидимка'),
+                          },
+                          onValueChanged: (mode) {
+                            if (mode == null) return;
+                            context.read<PresenceCubit>().setMode(mode);
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class const _CustomFieldsSection({required final SettingsState state})
+    extends StatelessWidget {
+  Future<void> _edit(BuildContext context, String field, String value) async {
+    final updated = await editProfileFieldSheet(
+      context: context,
+      field: field,
+      initialValue: value,
+    );
+    if (updated == null || !context.mounted) return;
+    await context.read<SettingsCubit>().updateProfileField(field, updated);
+  }
+
+  Future<void> _add(BuildContext context) async {
+    final created = await addProfileFieldSheet(
+      context: context,
+      addable: state.addableProfileFields,
+    );
+    if (created == null || !context.mounted) return;
+    await context.read<SettingsCubit>().updateProfileField(
+      created.key,
+      created.value,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = state.customFields.entries.toList();
+    final addable = state.addableProfileFields;
+    final canAdd = addable == null || addable.isNotEmpty;
+    return CupertinoListSection.insetGrouped(
+      header: const Text('Дополнительно'),
+      children: [
+        for (final entry in entries)
+          CupertinoListTile(
+            title: Text(profileFieldLabel(entry.key)),
+            subtitle: Text(entry.value, maxLines: 2, overflow: .ellipsis),
+            trailing: state.editableProfileFields.contains(entry.key)
+                ? const CupertinoListTileChevron()
+                : null,
+            onTap: state.editableProfileFields.contains(entry.key)
+                ? () => _edit(context, entry.key, entry.value)
+                : null,
+          ),
+        if (canAdd)
+          CupertinoListTile(
+            title: const Text('Добавить поле'),
+            trailing: const Icon(CupertinoIcons.plus),
+            onTap: () => _add(context),
+          ),
+      ],
     );
   }
 }

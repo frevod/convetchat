@@ -3,7 +3,7 @@ import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:camerawesome/pigeon.dart';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/features/chat/domain/entities/record_mode.dart';
-import 'package:convetchat/features/chat/domain/services/circle_video_service.dart';
+import 'package:convetchat/features/chat/data/services/circle_video_service.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';

@@ -46,7 +46,7 @@ M3EListItem buildRoomListItem(
               size: 48,
               context: context,
             ),
-            if (room.isDirect && room.online)
+            if (room.isDirect && (room.online || room.busy))
               Positioned(
                 right: 0,
                 bottom: 0,
@@ -54,7 +54,7 @@ M3EListItem buildRoomListItem(
                   width: 15,
                   height: 15,
                   decoration: BoxDecoration(
-                    color: scheme.primary,
+                    color: room.busy ? scheme.tertiary : scheme.primary,
                     shape: .circle,
                     border: Border.all(color: scheme.surface, width: 2.5),
                   ),

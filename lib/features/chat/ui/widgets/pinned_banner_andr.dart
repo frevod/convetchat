@@ -1,6 +1,7 @@
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:material_3_expressive/components/icon_buttons/m3e_icon_buttons.dart';
 import 'package:material_ui/material_ui.dart';
 
 String pinnedPreviewText(ChatMessage message) {
@@ -87,9 +88,10 @@ class const PinnedBannerAndr({super.key}) extends StatelessWidget {
                 ],
               ),
             ),
-            IconButton(
+            M3EIconButton(
               icon: const Icon(Icons.close_rounded, size: 20),
               tooltip: 'Открепить',
+              variant: .standard,
               onPressed: () => cubit.unpinMessage(),
             ),
           ],

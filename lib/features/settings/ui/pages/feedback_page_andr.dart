@@ -165,7 +165,8 @@ class _FeedbackPageAndrState() extends State<FeedbackPageAndr> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  suffix: IconButton(
+                  suffix: M3EIconButton(
+                    variant: .standard,
                     onPressed: state.isSending ? () {} : _pickMedia,
                     icon: Icon(
                       Icons.photo_rounded,

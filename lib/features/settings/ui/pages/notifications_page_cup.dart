@@ -10,8 +10,6 @@ class const NotificationsPageCup({super.key}) extends StatefulWidget {
 class _NotificationsPageCupState() extends State<NotificationsPageCup> {
   bool _peopleEnabled = true;
   bool _groupsEnabled = true;
-  bool _reactionsEnabled = true;
-  bool _invitesEnabled = true;
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +23,7 @@ class _NotificationsPageCupState() extends State<NotificationsPageCup> {
         child: ListView(
           children: [
             CupertinoListSection.insetGrouped(
+              header: const Text('Общее'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 CupertinoListTile(
@@ -38,6 +37,7 @@ class _NotificationsPageCupState() extends State<NotificationsPageCup> {
               ],
             ),
             CupertinoListSection.insetGrouped(
+              header: const Text('Категории'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 CupertinoListTile(
@@ -47,8 +47,7 @@ class _NotificationsPageCupState() extends State<NotificationsPageCup> {
                     value: _peopleEnabled,
                     onChanged: (v) => setState(() => _peopleEnabled = v),
                   ),
-                  onTap: () =>
-                      setState(() => _peopleEnabled = !_peopleEnabled),
+                  onTap: () => setState(() => _peopleEnabled = !_peopleEnabled),
                 ),
                 CupertinoListTile(
                   leading: const Icon(CupertinoIcons.person_2_fill),
@@ -57,33 +56,29 @@ class _NotificationsPageCupState() extends State<NotificationsPageCup> {
                     value: _groupsEnabled,
                     onChanged: (v) => setState(() => _groupsEnabled = v),
                   ),
-                  onTap: () =>
-                      setState(() => _groupsEnabled = !_groupsEnabled),
+                  onTap: () => setState(() => _groupsEnabled = !_groupsEnabled),
                 ),
               ],
             ),
             CupertinoListSection.insetGrouped(
+              header: const Text('Типы'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 CupertinoListTile(
-                  leading: const Icon(CupertinoIcons.smiley),
-                  title: const Text('Реакции'),
-                  trailing: CupertinoSwitch(
-                    value: _reactionsEnabled,
-                    onChanged: (v) => setState(() => _reactionsEnabled = v),
-                  ),
-                  onTap: () =>
-                      setState(() => _reactionsEnabled = !_reactionsEnabled),
-                ),
-                CupertinoListTile(
                   leading: const Icon(CupertinoIcons.mail),
                   title: const Text('Приглашения'),
+                  subtitle: state.invitesSupported
+                      ? null
+                      : const Text('Сервер не поддерживает'),
                   trailing: CupertinoSwitch(
-                    value: _invitesEnabled,
-                    onChanged: (v) => setState(() => _invitesEnabled = v),
+                    value: state.invitesEnabled,
+                    onChanged: state.invitesSupported
+                        ? cubit.toggleInvites
+                        : null,
                   ),
-                  onTap: () =>
-                      setState(() => _invitesEnabled = !_invitesEnabled),
+                  onTap: state.invitesSupported
+                      ? () => cubit.toggleInvites(!state.invitesEnabled)
+                      : null,
                 ),
               ],
             ),

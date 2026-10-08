@@ -3,9 +3,8 @@ import 'package:convetchat/core/platform_style.dart';
 import 'package:convetchat/features/chat/domain/entities/chat_message.dart';
 import 'package:convetchat/features/chat/ui/cubit/chat_cubit.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
-import 'package:flutter/material.dart' show Theme;
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:material_ui/material_ui.dart' show Material, InkWell;
+import 'package:material_ui/material_ui.dart' show Material, InkWell, Theme;
 
 class const MessageReactions({
   super.key,

@@ -6,6 +6,7 @@ import 'package:convetchat/features/encryption/domain/repositories/encryption_re
 import 'package:convetchat/features/settings/domain/repositories/security_repository.dart';
 import 'package:convetchat/features/settings/ui/share_keys_with_labels.dart';
 import 'package:convetchat/features/settings/ui/widgets/app_lock_pin_sheet.dart';
+import 'package:convetchat/features/settings/ui/widgets/settings_section_header.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -251,9 +252,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
             ),
             const SizedBox(height: 12),
             if (shareMode == null)
-              const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
+              const Center(child: CircularProgressIndicator(strokeWidth: 2))
             else
               M3EDropdownMenu<ShareKeysWith>(
                 singleSelect: true,
@@ -282,6 +281,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
       body: ListView(
         padding: const EdgeInsets.all(8.0),
         children: [
+          const SettingsSectionHeader(title: 'Резервная копия'),
           M3EList(
             itemCount: 1,
             onTap: (_) {
@@ -307,6 +307,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
             },
           ),
           const SizedBox(height: 12),
+          const SettingsSectionHeader(title: 'Блокировка'),
           M3EList(
             itemCount: lockItems.length,
             onTap: (index) => lockItems[index].onTap?.call(),

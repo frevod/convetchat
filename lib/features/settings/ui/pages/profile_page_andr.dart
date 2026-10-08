@@ -3,10 +3,14 @@ import 'dart:io';
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/app/adaptive/adaptive_snackbar.dart';
 import 'package:convetchat/app/adaptive/adaptive_text_field.dart';
+import 'package:convetchat/core/presence/presence_mode.dart';
 import 'package:convetchat/core/utils/message_format.dart';
 import 'package:convetchat/core/widgets/mxc_avatar.dart';
+import 'package:convetchat/features/settings/ui/cubit/presence_cubit.dart';
+import 'package:convetchat/features/settings/ui/cubit/presence_state.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_cubit.dart';
 import 'package:convetchat/features/settings/ui/cubit/settings_state.dart';
+import 'package:convetchat/features/settings/ui/widgets/profile_field_sheet.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:material_3_expressive/material_3_expressive.dart';
@@ -115,8 +119,124 @@ class _ProfilePageAndrState() extends State<ProfilePageAndr> {
                   _buildNameButton(state),
                 ],
               ),
+              if (state.profileFieldsSupported &&
+                  state.customFields.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Text(
+                  'Дополнительно',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 8),
+                _CustomFieldsList(state: state),
+              ],
+              BlocBuilder<PresenceCubit, PresenceState>(
+                builder: (context, presence) {
+                  if (presence.isLoading || !presence.supported) {
+                    return const SizedBox.shrink();
+                  }
+                  final cubit = context.read<PresenceCubit>();
+                  return Column(
+                    crossAxisAlignment: .start,
+                    children: [
+                      const SizedBox(height: 24),
+                      Text(
+                        'Статус',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: M3ESegmentedButton<PresenceMode>(
+                          segments: const [
+                            M3ESegment(
+                              value: PresenceMode.online,
+                              label: 'В сети',
+                            ),
+                            M3ESegment(
+                              value: PresenceMode.busy,
+                              label: 'Занят',
+                            ),
+                            M3ESegment(
+                              value: PresenceMode.offline,
+                              label: 'Невидимка',
+                            ),
+                          ],
+                          selected: {presence.mode},
+                          enabled: !presence.isSaving,
+                          onSelectionChanged: (selected) =>
+                              cubit.setMode(selected.single),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ],
           ),
+        );
+      },
+    );
+  }
+}
+
+class const _CustomFieldsList({required final SettingsState state})
+    extends StatelessWidget {
+  Future<void> _edit(BuildContext context, String field, String value) async {
+    final updated = await editProfileFieldSheet(
+      context: context,
+      field: field,
+      initialValue: value,
+    );
+    if (updated == null || !context.mounted) return;
+    await context.read<SettingsCubit>().updateProfileField(field, updated);
+  }
+
+  Future<void> _add(BuildContext context) async {
+    final created = await addProfileFieldSheet(
+      context: context,
+      addable: state.addableProfileFields,
+    );
+    if (created == null || !context.mounted) return;
+    await context.read<SettingsCubit>().updateProfileField(
+      created.key,
+      created.value,
+    );
+  }
+
+  bool get _canAdd {
+    if (!state.profileFieldsSupported) return false;
+    final addable = state.addableProfileFields;
+    return addable == null || addable.isNotEmpty;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = state.customFields.entries.toList();
+    final canAdd = _canAdd;
+    return M3EList(
+      itemCount: entries.length + (canAdd ? 1 : 0),
+      onTap: (index) {
+        if (index >= entries.length) {
+          _add(context);
+          return;
+        }
+        final entry = entries[index];
+        if (state.editableProfileFields.contains(entry.key)) {
+          _edit(context, entry.key, entry.value);
+        }
+      },
+      itemBuilder: (context, index) {
+        if (index >= entries.length) {
+          return const M3EListItem(
+            headline: 'Добавить поле',
+            trailing: Icon(Icons.add_rounded),
+          );
+        }
+        final entry = entries[index];
+        final editable = state.editableProfileFields.contains(entry.key);
+        return M3EListItem(
+          headline: profileFieldLabel(entry.key),
+          supportingText: entry.value,
+          trailing: editable ? const Icon(Icons.edit_rounded) : null,
         );
       },
     );

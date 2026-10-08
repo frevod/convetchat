@@ -1,4 +1,5 @@
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
+import 'package:convetchat/features/auth/domain/entities/auth_mode.dart';
 import 'package:convetchat/features/auth/ui/bloc/auth_cubit.dart';
 import 'package:convetchat/features/auth/ui/bloc/auth_state.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -22,7 +23,11 @@ class const ServerContinueButtonAndr({super.key}) extends StatelessWidget {
             size: .md,
             child: isLoading
                 ? const AdaptiveLoadingIndicator()
-                : Text('Продолжить'),
+                : Text(
+                    cubit.mode == AuthMode.register
+                        ? 'Зарегистрироваться'
+                        : 'Войти',
+                  ),
           ),
         );
       },

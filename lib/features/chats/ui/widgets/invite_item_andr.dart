@@ -43,7 +43,7 @@ class const InviteItemAndr({
             ),
             const SizedBox(height: 4),
             Text(
-              'Вас пригласили в чат',
+              invite.inviteReason ?? 'Вас пригласили в чат',
               style: TextStyle(
                 fontSize: 13,
                 color: scheme.onSecondaryContainer,

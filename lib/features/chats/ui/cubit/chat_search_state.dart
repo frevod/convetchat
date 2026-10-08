@@ -11,7 +11,6 @@ class const ChatSearchState({
   final List<SearchedMessage> messageHits = const [],
   final List<SearchedUser> userHits = const [],
   final List<PublicRoom> publicHits = const [],
-  final String? joiningRoomId,
   final bool isCreatingChat = false,
   final String? errorMessage,
 }) extends Equatable {
@@ -22,7 +21,6 @@ class const ChatSearchState({
     List<SearchedMessage> Function()? messageHits,
     List<SearchedUser> Function()? userHits,
     List<PublicRoom> Function()? publicHits,
-    String? Function()? joiningRoomId,
     bool Function()? isCreatingChat,
     String? Function()? errorMessage,
   }) {
@@ -33,9 +31,6 @@ class const ChatSearchState({
       messageHits: messageHits != null ? messageHits() : this.messageHits,
       userHits: userHits != null ? userHits() : this.userHits,
       publicHits: publicHits != null ? publicHits() : this.publicHits,
-      joiningRoomId: joiningRoomId != null
-          ? joiningRoomId()
-          : this.joiningRoomId,
       isCreatingChat: isCreatingChat != null
           ? isCreatingChat()
           : this.isCreatingChat,
@@ -51,7 +46,6 @@ class const ChatSearchState({
     messageHits,
     userHits,
     publicHits,
-    joiningRoomId,
     isCreatingChat,
     errorMessage,
   ];

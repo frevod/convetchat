@@ -1,15 +1,20 @@
 import 'dart:async';
 
-import 'package:convetchat/core/di/locator.dart';
-import 'package:convetchat/core/matrix/matrix_call_failure.dart';
 import 'package:convetchat/features/chats/domain/entities/chat_room.dart';
 import 'package:convetchat/features/chats/domain/entities/connection_status.dart';
 import 'package:convetchat/features/chats/domain/repositories/chats_repository.dart';
+import 'package:convetchat/features/chats/domain/usecases/accept_invite_usecase.dart';
+import 'package:convetchat/features/chats/domain/usecases/decline_invite_usecase.dart';
 import 'package:convetchat/features/chats/ui/cubit/chats_state.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
-class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
+class ChatsCubit(
+  final ChatsRepository _repository, {
+  required final Talker _talker,
+  required final AcceptInviteUseCase _acceptInvite,
+  required final DeclineInviteUseCase _declineInvite,
+}) extends Cubit<ChatsState> {
   this : super(const ChatsState()) {
     _subscription = _repository.watchRooms().listen((snapshot) {
       if (isClosed) return;
@@ -53,41 +58,25 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
   Future<void> acceptInvite(ChatRoom invite) async {
     if (state.actionInviteId != null) return;
     emit(state.copyWith(actionInviteId: () => invite.id));
-    try {
-      await _repository.acceptInvite(invite.id);
-    } catch (e, s) {
-      if (isClosed) return;
-      final failure = e is MatrixCallFailure ? e : null;
-      getIt<Talker>().error(
-        '[chats] accept invite failed${failure == null ? '' : ': $failure'}',
-        e,
-        s,
-      );
-      emit(
-        state.copyWith(
-          errorMessage: () =>
-              failure?.userMessage ?? 'Не удалось принять приглашение',
-        ),
-      );
-    } finally {
-      if (!isClosed) emit(state.copyWith(actionInviteId: () => null));
-    }
+    final result = await _acceptInvite(AcceptInviteParams(roomId: invite.id));
+    if (isClosed) return;
+    result.fold((failure) {
+      _talker.error('[chats] accept invite failed: $failure');
+      emit(state.copyWith(errorMessage: () => failure.message));
+    }, (_) {});
+    if (!isClosed) emit(state.copyWith(actionInviteId: () => null));
   }
 
   Future<void> declineInvite(ChatRoom invite) async {
     if (state.actionInviteId != null) return;
     emit(state.copyWith(actionInviteId: () => invite.id));
-    try {
-      await _repository.declineInvite(invite.id);
-    } catch (e, s) {
-      if (isClosed) return;
-      getIt<Talker>().error('[chats] decline invite failed', e, s);
-      emit(
-        state.copyWith(errorMessage: () => 'Не удалось отклонить приглашение'),
-      );
-    } finally {
-      if (!isClosed) emit(state.copyWith(actionInviteId: () => null));
-    }
+    final result = await _declineInvite(DeclineInviteParams(roomId: invite.id));
+    if (isClosed) return;
+    result.fold((failure) {
+      _talker.error('[chats] decline invite failed: $failure');
+      emit(state.copyWith(errorMessage: () => failure.message));
+    }, (_) {});
+    if (!isClosed) emit(state.copyWith(actionInviteId: () => null));
   }
 
   void clearError() {
@@ -106,7 +95,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
       await _repository.setMuted(room.id, !room.isMuted);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('[chats] toggle mute failed', e, s);
+      _talker.error('[chats] toggle mute failed', e, s);
       emit(
         state.copyWith(
           rooms: () => previous,
@@ -129,7 +118,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
       await _repository.setPinned(room.id, !room.isPinned);
     } catch (e, s) {
       if (isClosed) return;
-      getIt<Talker>().error('[chats] pin chat failed', e, s);
+      _talker.error('[chats] pin chat failed', e, s);
       emit(
         state.copyWith(
           rooms: () => previous,
@@ -152,7 +141,7 @@ class ChatsCubit(final ChatsRepository _repository) extends Cubit<ChatsState> {
     } catch (e, s) {
       _leaving.remove(room.id);
       if (isClosed) return;
-      getIt<Talker>().error('[chats] leave room failed', e, s);
+      _talker.error('[chats] leave room failed', e, s);
       emit(
         state.copyWith(
           rooms: () => previous,

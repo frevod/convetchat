@@ -1,6 +1,7 @@
 import 'package:convetchat/core/matrix/client_factory.dart';
 import 'package:convetchat/core/matrix/session_backup.dart';
 import 'package:convetchat/core/platform_info.dart';
+import 'package:convetchat/features/auth/domain/entities/auth_mode.dart';
 import 'package:convetchat/features/auth/domain/exceptions/sso_cancelled_exception.dart';
 import 'package:convetchat/features/auth/domain/repositories/auth_repository.dart';
 import 'package:flutter/services.dart';
@@ -45,7 +46,7 @@ class AuthRepositoryImpl(final Client _client) implements AuthRepository {
   static const _desktopCallbackUrl = 'http://localhost:3001';
 
   @override
-  Future<void> loginWithSso() async {
+  Future<void> loginWithSso({required AuthMode mode}) async {
     final homeserver = _client.homeserver;
     if (homeserver == null) {
       throw const SsoCancelledException();
@@ -57,7 +58,7 @@ class AuthRepositoryImpl(final Client _client) implements AuthRepository {
         'redirectUrl': desktop
             ? '$_desktopCallbackUrl/login'
             : '$ssoCallbackScheme:/login',
-        'action': 'login',
+        'action': mode == .register ? 'register' : 'login',
       },
     );
     late final String callback;
@@ -76,10 +77,16 @@ class AuthRepositoryImpl(final Client _client) implements AuthRepository {
     if (token == null || token.isEmpty) {
       throw const SsoCancelledException();
     }
+    await loginWithToken(token);
+  }
+
+  @override
+  Future<void> loginWithToken(String token) async {
     await _client.login(
       LoginType.mLoginToken,
       token: token,
       initialDeviceDisplayName: 'ConvetChat',
+      refreshToken: true,
     );
     await storeSessionBackup(_client);
   }

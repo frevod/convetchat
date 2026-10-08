@@ -54,6 +54,7 @@ class CircleVideoService() {
   VideoCameraState? _awesomeVideo;
   VideoRecordingCameraState? _awesomeRecording;
   Completer<void>? _awesomeReady;
+  String? _awesomeRecordedPath;
 
   AwesomeCircleConfig? get awesomeConfig => _awesomeConfig;
 
@@ -81,6 +82,7 @@ class CircleVideoService() {
     _awesomeVideo = null;
     _awesomeRecording = null;
     _awesomeReady = Completer<void>();
+    _awesomeRecordedPath = null;
   }
 
   void attachAwesomeVideo(VideoCameraState state) {
@@ -98,6 +100,7 @@ class CircleVideoService() {
     _awesomeRecording = null;
     _awesomeReady = null;
     _awesomeConfig = null;
+    _awesomeRecordedPath = null;
   }
 
   Future<bool> waitAwesomeVideo({Duration timeout = const Duration(seconds: 12)}) async {
@@ -120,25 +123,37 @@ class CircleVideoService() {
       return false;
     }
     try {
-      await state.startRecording();
+      final request = await state.startRecording();
+      final path = request.path;
+      if (path == null || path.isEmpty) {
+        return false;
+      }
+      _awesomeRecordedPath = path;
       _videoRecording = true;
       return true;
     } catch (e, s) {
-      getIt<Talker>().error('[awesome] start recording failed', e, s);
+      getIt<Talker>().error('[chat] circle record start failed', e, s);
       return false;
     }
   }
 
   Future<String?> stopAwesomeRecording() async {
     _videoRecording = false;
-    final path = _awesomeConfig?.filePath;
+    final path = _awesomeRecordedPath ?? _awesomeConfig?.filePath;
     try {
       await _awesomeRecording?.stopRecording();
     } catch (e, s) {
-      getIt<Talker>().error('[awesome] stop recording failed', e, s);
+      getIt<Talker>().error('[chat] circle record stop failed', e, s);
     }
     _awesomeRecording = null;
+    _awesomeRecordedPath = null;
     if (path == null || path.isEmpty) return null;
+    try {
+      final file = File(path);
+      if (!await file.exists() || await file.length() == 0) return null;
+    } catch (_) {
+      return null;
+    }
     return path;
   }
 

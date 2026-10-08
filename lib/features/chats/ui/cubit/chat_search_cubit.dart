@@ -115,26 +115,6 @@ class ChatSearchCubit(final ChatsRepository _repository)
     }
   }
 
-  Future<String?> joinPublicRoom(String roomId) async {
-    if (state.joiningRoomId != null) return null;
-    emit(state.copyWith(joiningRoomId: () => roomId));
-    try {
-      await _repository.joinRoom(roomId);
-      return roomId;
-    } catch (e, s) {
-      if (isClosed) return null;
-      getIt<Talker>().error('[chats] join room failed', e, s);
-      emit(
-        state.copyWith(
-          errorMessage: () => 'Не удалось войти в комнату. Попробуйте снова',
-        ),
-      );
-      return null;
-    } finally {
-      if (!isClosed) emit(state.copyWith(joiningRoomId: () => null));
-    }
-  }
-
   void clearError() {
     emit(state.copyWith(errorMessage: () => null));
   }

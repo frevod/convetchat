@@ -11,6 +11,7 @@ class const ServerPageAndr({super.key}) extends StatefulWidget {
 class _ServerPageAndrState() extends State<ServerPageAndr> {
   @override
   Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
       appBar: M3EAppBar.top(
         shapeFamily: .round,
@@ -28,10 +29,31 @@ class _ServerPageAndrState() extends State<ServerPageAndr> {
           child: ServerContinueButton(),
         ),
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(18.0),
-          child: ServerField(),
+      body: Padding(
+        padding: const EdgeInsets.all(18.0),
+        child: Column(
+          mainAxisSize: .min,
+          crossAxisAlignment: .stretch,
+          spacing: 12,
+          children: [
+            Text(
+              'Введите адрес вашего домашнего сервера',
+              style: textTheme.titleMedium,
+              textAlign: .center,
+            ),
+            Text(
+              'Домашний сервер в Matrix — это место, где хранятся ваши данные'
+              'В Matrix вы не привязаны к одному серверу, а можете использовать любой',
+              style: textTheme.bodyMedium,
+              textAlign: .center,
+            ),
+            Text(
+              'Поддерживаются только серверы с MAS (Matrix Authentication Service)',
+              style: textTheme.bodySmall,
+              textAlign: .center,
+            ),
+            ServerField(),
+          ],
         ),
       ),
     );

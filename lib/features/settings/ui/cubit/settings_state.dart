@@ -14,6 +14,14 @@ class const SettingsState({
 
   final String? avatarMxc,
 
+  final Map<String, String> customFields = const {},
+
+  final Set<String> editableProfileFields = const {},
+
+  final List<String>? addableProfileFields,
+
+  final bool profileFieldsSupported = false,
+
   final String? userId,
   final String? errorMessage,
 
@@ -23,9 +31,9 @@ class const SettingsState({
 
   final bool groupsEnabled = true,
 
-  final bool reactionsEnabled = false,
-
   final bool invitesEnabled = true,
+
+  final bool invitesSupported = true,
 
   final bool contentPreview = true,
 
@@ -42,13 +50,17 @@ class const SettingsState({
     bool Function()? telemetryConsent,
     String? Function()? displayName,
     String? Function()? avatarMxc,
+    Map<String, String> Function()? customFields,
+    Set<String> Function()? editableProfileFields,
+    List<String>? Function()? addableProfileFields,
+    bool Function()? profileFieldsSupported,
     String? Function()? userId,
     String? Function()? errorMessage,
     bool Function()? notificationsEnabled,
     bool Function()? peopleEnabled,
     bool Function()? groupsEnabled,
-    bool Function()? reactionsEnabled,
     bool Function()? invitesEnabled,
+    bool Function()? invitesSupported,
     bool Function()? contentPreview,
     List<ChatRoom> Function()? notificationRooms,
     bool Function()? profileSaving,
@@ -63,17 +75,27 @@ class const SettingsState({
           : this.telemetryConsent,
       displayName: displayName != null ? displayName() : this.displayName,
       avatarMxc: avatarMxc != null ? avatarMxc() : this.avatarMxc,
+      customFields: customFields != null ? customFields() : this.customFields,
+      editableProfileFields: editableProfileFields != null
+          ? editableProfileFields()
+          : this.editableProfileFields,
+      addableProfileFields: addableProfileFields != null
+          ? addableProfileFields()
+          : this.addableProfileFields,
+      profileFieldsSupported: profileFieldsSupported != null
+          ? profileFieldsSupported()
+          : this.profileFieldsSupported,
       userId: userId != null ? userId() : this.userId,
       errorMessage: errorMessage != null ? errorMessage() : this.errorMessage,
       notificationsEnabled: notificationsEnabled != null
           ? notificationsEnabled()
           : this.notificationsEnabled,
-      reactionsEnabled: reactionsEnabled != null
-          ? reactionsEnabled()
-          : this.reactionsEnabled,
       invitesEnabled: invitesEnabled != null
           ? invitesEnabled()
           : this.invitesEnabled,
+      invitesSupported: invitesSupported != null
+          ? invitesSupported()
+          : this.invitesSupported,
       contentPreview: contentPreview != null
           ? contentPreview()
           : this.contentPreview,
@@ -103,11 +125,15 @@ class const SettingsState({
     telemetryConsent,
     displayName,
     avatarMxc,
+    customFields,
+    editableProfileFields,
+    addableProfileFields,
+    profileFieldsSupported,
     userId,
     errorMessage,
     notificationsEnabled,
-    reactionsEnabled,
     invitesEnabled,
+    invitesSupported,
     contentPreview,
     peopleEnabled,
     groupsEnabled,

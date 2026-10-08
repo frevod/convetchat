@@ -203,8 +203,8 @@ class const _Results({
                           .toList();
                       return M3EList(
                         itemCount: rooms.length,
-                        onTap: (index) => joinAndOpenPublicRoom(
-                          searchCubit: searchCubit,
+                        onTap: (index) => openPublicRoomPreview(
+                          context: context,
                           room: rooms[index],
                           searchController: searchController,
                         ),
@@ -213,9 +213,8 @@ class const _Results({
                           return PublicRoomHit(
                             key: ValueKey(room.roomId),
                             room: room,
-                            busy: search.joiningRoomId == room.roomId,
-                            onJoin: () => joinAndOpenPublicRoom(
-                              searchCubit: searchCubit,
+                            onPreview: () => openPublicRoomPreview(
+                              context: context,
                               room: room,
                               searchController: searchController,
                             ),

@@ -237,7 +237,7 @@ class _SeekBarState() extends State<_SeekBar> {
               style: const TextStyle(fontSize: 12, color: Color(0xFFFFFFFF)),
             ),
             Expanded(
-              child: Slider(
+              child: M3ESlider(
                 value: total <= 0 ? 0 : pos,
                 min: 0,
                 max: total <= 0 ? 1 : total,

@@ -1,6 +1,6 @@
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
-import 'package:convetchat/features/chat/domain/services/circle_video_service.dart';
+import 'package:convetchat/features/chat/data/services/circle_video_service.dart';
 import 'package:convetchat/features/chat/ui/widgets/reaction_picker.dart';
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -363,6 +363,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
         child: ListView(
           children: [
             CupertinoListSection.insetGrouped(
+              header: const Text('Оформление'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 _switchTile(
@@ -380,6 +381,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
               ],
             ),
             CupertinoListSection.insetGrouped(
+              header: const Text('Скрытое'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 _switchTile(
@@ -403,6 +405,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
               ],
             ),
             CupertinoListSection.insetGrouped(
+              header: const Text('Автовоспроизведение'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 _switchTile(
@@ -430,9 +433,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
             CupertinoListSection.insetGrouped(
               backgroundColor: CupertinoColors.transparent,
               header: const Text('Камера для кружков'),
-              footer: const Text(
-                'Выше качество — тяжелее файлы.',
-              ),
+              footer: const Text('Выше качество — тяжелее файлы.'),
               children: [
                 _switchTile(
                   icon: CupertinoIcons.camera_fill,
@@ -472,6 +473,7 @@ class _ChatSettingsPageCupState() extends State<ChatSettingsPageCup> {
               ],
             ),
             CupertinoListSection.insetGrouped(
+              header: const Text('Взаимодействие'),
               backgroundColor: CupertinoColors.transparent,
               children: [
                 _switchTile(

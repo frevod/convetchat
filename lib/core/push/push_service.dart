@@ -381,7 +381,7 @@ class PushService(final Client _client, final Talker _talker) {
     router.go('/chats');
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (getIt.isReadySync<GoRouter>()) {
+      if (getIt.isRegistered<GoRouter>()) {
         unawaited(router.push(location, extra: eventId));
       }
     });

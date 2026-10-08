@@ -1,7 +1,8 @@
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/features/chat/domain/repositories/chat_repository.dart';
-import 'package:convetchat/features/chat/domain/services/circle_video_service.dart';
+import 'package:convetchat/features/chat/data/services/circle_video_service.dart';
 import 'package:convetchat/features/chat/ui/widgets/reaction_picker.dart';
+import 'package:convetchat/features/settings/ui/widgets/settings_section_header.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:talker_flutter/talker_flutter.dart';
@@ -477,15 +478,15 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
         child: ListView(
           padding: const EdgeInsets.all(8.0),
           children: [
-            _rowsList(formattedRows),
+            _group('Оформление', formattedRows),
             const SizedBox(height: 12),
-            _rowsList(hiddenRows),
+            _group('Скрытое', hiddenRows),
             const SizedBox(height: 12),
-            _rowsList(autoplayRows),
+            _group('Автовоспроизведение', autoplayRows),
             const SizedBox(height: 12),
-            _rowsList(videoRows),
+            _group('Камера', videoRows),
             const SizedBox(height: 12),
-            _rowsList(otherRows),
+            _group('Взаимодействие', otherRows),
           ],
         ),
       ),
@@ -497,6 +498,16 @@ class _ChatSettingsPageAndrState() extends State<ChatSettingsPageAndr> {
       itemCount: rows.length,
       onTap: (index) => rows[index].onTap?.call(),
       itemBuilder: (context, index) => rows[index],
+    );
+  }
+
+  Widget _group(String title, List<M3EListItem> rows) {
+    return Column(
+      crossAxisAlignment: .start,
+      children: [
+        SettingsSectionHeader(title: title),
+        _rowsList(rows),
+      ],
     );
   }
 

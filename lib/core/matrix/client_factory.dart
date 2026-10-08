@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:convetchat/core/presence/presence_mode.dart';
 import 'package:convetchat/features/settings/data/repositories/security_repository_impl.dart';
+import 'package:convetchat/features/settings/domain/repositories/presence_repository.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_vodozemac/flutter_vodozemac.dart' as vod;
 import 'package:matrix/matrix.dart';
@@ -29,7 +31,7 @@ class ClientFactory() {
     try {
       await future;
       _vodozemacReady = true;
-      Logs().d('vodozemac готов');
+      Logs().d('vodozemac ready');
     } catch (e, s) {
       Logs().e('vodozemac init failed', e, s);
       rethrow;
@@ -45,6 +47,17 @@ class ClientFactory() {
     } catch (_) {
       return true;
     }
+  }
+
+  static Future<void> _applyStoredPresence(Client client) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final mode = PresenceMode.fromName(
+        prefs.getString(PresenceRepository.storageKey),
+      );
+      if (mode == PresenceMode.online) return;
+      client.syncPresence = mode.presenceType;
+    } catch (_) {}
   }
 
   static Future<Client> createClient() async {
@@ -75,11 +88,10 @@ class ClientFactory() {
             )),
       logLevel: kDebugMode ? .debug : .warning,
       defaultNetworkRequestTimeout: const Duration(minutes: 1),
+      importantStateEvents: {'org.matrix.msc3401.call.member'},
 
-      shareKeysWith:
-          await SecurityRepositoryImpl.restoredShareKeysMode(),
-      enableDehydratedDevices:
-          await experimentalDehydratedDevicesEnabled(),
+      shareKeysWith: await SecurityRepositoryImpl.restoredShareKeysMode(),
+      enableDehydratedDevices: await experimentalDehydratedDevicesEnabled(),
     );
 
     try {
@@ -87,18 +99,21 @@ class ClientFactory() {
         waitForFirstSync: false,
         waitUntilLoadCompletedLoaded: false,
       );
+      await _applyStoredPresence(client);
       if (client.isLogged()) await storeSessionBackup(client);
     } catch (e, s) {
-      Logs().e('Client init failed, пробую бэкап сессии', e, s);
+      Logs().e('Client init failed, restoring session backup', e, s);
       try {
         await restoreSessionBackup(client);
+        Logs().d('Session restored from backup');
       } catch (e, s) {
-        Logs().e('Бэкапа нет, продолжаем без входа', e, s);
+        Logs().e('No session backup, continuing logged out', e, s);
       }
     }
 
-    client.onSessionCleared.stream.listen((_) async {
+    client.onSessionCleared.stream.listen((reason) async {
       try {
+        if (reason != SessionClearReason.logout) return;
         await deleteSessionBackup(client.clientName);
       } catch (_) {}
     });

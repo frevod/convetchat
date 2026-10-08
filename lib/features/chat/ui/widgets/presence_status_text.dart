@@ -5,6 +5,7 @@ String chatStatusText(ChatState state) => presenceStatusText(
   typingUsers: state.typingUsers,
   partnerUserId: state.partnerUserId,
   partnerOnline: state.partnerOnline,
+  partnerBusy: state.partnerBusy,
   partnerLastActive: state.partnerLastActive,
 );
 
@@ -12,6 +13,7 @@ String presenceStatusText({
   required List<({String id, String name})> typingUsers,
   required String? partnerUserId,
   required bool partnerOnline,
+  required bool partnerBusy,
   required DateTime? partnerLastActive,
 }) {
   final typing = typingUsers;
@@ -28,6 +30,7 @@ String presenceStatusText({
     return '${typing.first.name} и ещё ${typing.length - 1} печатают…';
   }
   if (partnerUserId == null) return '';
+  if (partnerBusy) return 'занят';
   if (partnerOnline) return 'в сети';
   final lastActive = partnerLastActive;
   if (lastActive != null) return 'был(а) в сети ${_ago(lastActive)}';

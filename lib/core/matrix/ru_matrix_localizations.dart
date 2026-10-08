@@ -29,9 +29,6 @@ class const RuMatrixLocalizations() extends MatrixLocalizations {
   String get anyoneCanJoin => 'Каждый может присоединиться';
 
   @override
-  String get needPantalaimonWarning => 'Ошибка шифрования';
-
-  @override
   String get channelCorruptedDecryptError => 'Шифрование было повреждено';
 
   @override
@@ -101,7 +98,9 @@ class const RuMatrixLocalizations() extends MatrixLocalizations {
     if (redactedEvent.senderId == redactedEvent.room.client.userID) {
       return 'Вы удалили это сообщение';
     }
-    final name = redactedEvent.senderFromMemoryOrFallback.calcDisplayname();
+    final name = redactedEvent.senderFromMemoryOrFallback.calcDisplayname(
+      i18n: this,
+    );
     return '$name удалил(а) это сообщение';
   }
 
@@ -113,7 +112,9 @@ class const RuMatrixLocalizations() extends MatrixLocalizations {
     if (redactedEvent.senderId == redactedEvent.room.client.userID) {
       return 'Вы удалили это сообщение';
     }
-    final name = redactedEvent.senderFromMemoryOrFallback.calcDisplayname();
+    final name = redactedEvent.senderFromMemoryOrFallback.calcDisplayname(
+      i18n: this,
+    );
     return '$name удалил(а) это сообщение';
   }
 
@@ -255,8 +256,11 @@ class const RuMatrixLocalizations() extends MatrixLocalizations {
   String sharedTheLocation(String senderName) => 'Местоположение';
 
   @override
-  String couldNotDecryptMessage(String errorText) =>
-      'Не удалось расшифровать сообщение';
+  String couldNotDecryptMessage(String errorText) {
+    final details = errorText.trim();
+    if (details.isEmpty) return 'Не удалось расшифровать сообщение';
+    return 'Не удалось расшифровать сообщение: $details';
+  }
 
   @override
   String unknownEvent(String typeKey) => 'Неизвестное событие: $typeKey';

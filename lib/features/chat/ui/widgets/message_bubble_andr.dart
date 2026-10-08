@@ -181,7 +181,29 @@ class const MessageBubbleAndr({
                         );
                       },
                     ),
-                  if (deleted)
+                  if (deleted && message.redactedVisibleBody != null)
+                    Column(
+                      crossAxisAlignment: .start,
+                      mainAxisSize: .min,
+                      children: [
+                        MessageDeletedLabel(
+                          color: placeholderColor,
+                          text: message.redactedBy == null
+                              ? 'Удалено • видно модераторам'
+                              : 'Удалил(а) ${message.redactedBy} • видно модераторам',
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          message.redactedVisibleBody!,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontStyle: .italic,
+                            color: placeholderColor,
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (deleted)
                     MessageDeletedLabel(color: placeholderColor)
                   else if (undecryptable)
                     MessageDeletedLabel(

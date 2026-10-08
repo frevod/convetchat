@@ -47,14 +47,13 @@ class _RoomDirectoryPageState() extends State<RoomDirectoryPageCup> {
                   ? const Center(child: Text('Комнаты не найдены'))
                   : ListView.builder(
                       itemCount: state.publicHits.length,
-                      itemBuilder: (_, index) {
+                      itemBuilder: (context, index) {
                         final room = state.publicHits[index];
                         return PublicRoomHit(
                           key: ValueKey(room.roomId),
                           room: room,
-                          busy: state.joiningRoomId == room.roomId,
-                          onJoin: () => joinAndOpenPublicRoom(
-                            searchCubit: cubit,
+                          onPreview: () => openPublicRoomPreview(
+                            context: context,
                             room: room,
                           ),
                         );

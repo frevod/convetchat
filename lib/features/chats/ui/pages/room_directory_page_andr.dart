@@ -53,8 +53,8 @@ class _RoomDirectoryPageState() extends State<RoomDirectoryPageAndr> {
                 ? const Center(child: Text('Комнаты не найдены'))
                 : M3EList.scrollable(
                     itemCount: state.publicHits.length,
-                    onTap: (index) => joinAndOpenPublicRoom(
-                      searchCubit: cubit,
+                    onTap: (index) => openPublicRoomPreview(
+                      context: context,
                       room: state.publicHits[index],
                     ),
                     itemBuilder: (_, index) {
@@ -62,11 +62,8 @@ class _RoomDirectoryPageState() extends State<RoomDirectoryPageAndr> {
                       return PublicRoomHit(
                         key: ValueKey(room.roomId),
                         room: room,
-                        busy: state.joiningRoomId == room.roomId,
-                        onJoin: () => joinAndOpenPublicRoom(
-                          searchCubit: cubit,
-                          room: room,
-                        ),
+                        onPreview: () =>
+                            openPublicRoomPreview(context: context, room: room),
                       );
                     },
                   ),

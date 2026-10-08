@@ -13,7 +13,12 @@ void attachMatrixLogsToTalker(Talker talker) {
       case Level.info:
         talker.info(message, event.exception, event.stackTrace);
       case Level.debug:
-        talker.debug(message, event.exception, event.stackTrace);
+        if (event.title.contains('Error parsing push rule') &&
+            '${event.exception}'.contains('Unknown push condition')) {
+          talker.verbose(message, event.exception, event.stackTrace);
+        } else {
+          talker.debug(message, event.exception, event.stackTrace);
+        }
       case Level.verbose:
         talker.verbose(message, event.exception, event.stackTrace);
     }

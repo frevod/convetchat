@@ -162,6 +162,21 @@ class const MessageInputAndr({super.key}) extends StatelessWidget {
                           (hasText || hasSendableMedia) &&
                           !state.isRecording &&
                           !cubit.exceedsUploadLimit;
+                      if (canSend) {
+                        return ExcludeFocus(
+                          child: M3EButton.filled(
+                            key: const ValueKey('trailing action'),
+                            decoration: const M3EButtonDecoration(
+                              fixedSize: Size(48, 48),
+                              borderRadius: 50,
+                              pressedRadius: 10,
+                              hoveredRadius: 20,
+                            ),
+                            onPressed: cubit.send,
+                            child: Icon(Icons.arrow_upward_rounded),
+                          ),
+                        );
+                      }
                       return RecordMicButton(
                         locked: locked,
                         onStart: cubit.startRecording,
@@ -170,7 +185,7 @@ class const MessageInputAndr({super.key}) extends StatelessWidget {
                         onLock: cubit.lockRecording,
                         buttonBuilder: (context, dragOffset, dragging) {
                           final scheme = Theme.of(context).colorScheme;
-                          final sendLike = locked || canSend;
+                          final sendLike = locked;
                           final showHints =
                               (state.isRecording || dragging) && !locked;
                           return Stack(
@@ -191,10 +206,6 @@ class const MessageInputAndr({super.key}) extends StatelessWidget {
                                     onPressed: () {
                                       if (locked) {
                                         cubit.stopRecordingAndSend();
-                                        return;
-                                      }
-                                      if (canSend) {
-                                        cubit.send();
                                         return;
                                       }
                                       HapticFeedback.mediumImpact();

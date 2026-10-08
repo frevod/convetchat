@@ -1,5 +1,5 @@
-import 'package:convetchat/features/welcome/ui/widgets/continue_entry_point_button.dart';
 import 'package:convetchat/features/welcome/ui/widgets/logo.dart';
+import 'package:convetchat/features/welcome/ui/widgets/welcome_actions.dart';
 import 'package:material_ui/material_ui.dart';
 
 class const WelcomePageAndr({super.key}) extends StatelessWidget {
@@ -14,8 +14,14 @@ class const WelcomePageAndr({super.key}) extends StatelessWidget {
             spacing: 5,
             children: [
               const Logo(),
-              SizedBox(height: 20),
-              const ContinueEntryPointButton(),
+              const SizedBox(height: 20),
+              Text(
+                'Добро пожаловать в ConvetChat',
+                textAlign: .center,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 20),
+              const WelcomeActions(),
             ],
           ),
         ),

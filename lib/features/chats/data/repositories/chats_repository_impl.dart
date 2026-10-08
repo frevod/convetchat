@@ -4,15 +4,22 @@ import 'dart:typed_data';
 import 'package:convetchat/core/di/locator.dart';
 import 'package:convetchat/core/matrix/event_label.dart';
 import 'package:convetchat/core/matrix/matrix_call_failure.dart';
+import 'package:convetchat/core/matrix/ru_matrix_localizations.dart';
+import 'package:convetchat/core/matrix/server_capabilities.dart';
+import 'package:convetchat/core/push/mention_filter.dart';
 import 'package:convetchat/core/utils/safe_text.dart';
 import 'package:convetchat/features/chats/domain/entities/chat_room.dart';
 import 'package:convetchat/features/chats/domain/entities/connection_status.dart';
+import 'package:convetchat/features/chats/domain/entities/join_rule.dart';
+import 'package:convetchat/features/chats/domain/entities/notification_mode.dart';
 import 'package:convetchat/features/chats/domain/entities/public_room.dart';
+import 'package:convetchat/features/chats/domain/entities/room_preview.dart';
 import 'package:convetchat/features/chats/domain/entities/searched_message.dart';
 import 'package:convetchat/features/chats/domain/entities/searched_user.dart';
 import 'package:convetchat/features/chats/domain/repositories/chats_repository.dart';
 import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:talker_flutter/talker_flutter.dart';
 
 class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
@@ -76,7 +83,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
               lastEvent,
               showSender: !room.isDirectChat,
             ).replaceAll('\n', ' ').trim();
-      final disp = room.getLocalizedDisplayname();
+      final disp = room.getLocalizedDisplayname(ruMatrixLocalizations);
       final roomAvatar = room.avatar?.toString();
       final partnerAvatar = partnerId == null
           ? null
@@ -93,6 +100,8 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
         avatarMxc: roomAvatar ?? partnerAvatar,
         isDirect: room.isDirectChat,
         online: online,
+        busy: presence?.presence == PresenceType.unavailable,
+        inviteReason: _inviteReason(room),
         isMuted: room.pushRuleState == PushRuleState.dontNotify,
         isPinned: room.isFavourite,
       );
@@ -125,6 +134,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
             displayName: (profile.displayName?.isNotEmpty ?? false)
                 ? profile.displayName!
                 : profile.userId,
+            avatarMxc: profile.avatarUrl?.toString(),
           ),
         )
         .toList();
@@ -142,7 +152,9 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
     try {
       final hits = await _serverSearchMessages(query);
       if (hits.isNotEmpty) return hits;
-      getIt<Talker>().warning('[chats] server message search empty, local fallback');
+      getIt<Talker>().warning(
+        '[chats] server message search empty, local fallback',
+      );
     } catch (e, s) {
       getIt<Talker>().warning(
         '[chats] server message search failed, local fallback',
@@ -177,7 +189,8 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
         SearchedMessage(
           roomId: roomId,
           eventId: event.eventId,
-          roomName: room?.getLocalizedDisplayname() ?? roomId,
+          roomName:
+              room?.getLocalizedDisplayname(ruMatrixLocalizations) ?? roomId,
           senderName: room == null
               ? event.senderId
               : _senderName(room, event.senderId),
@@ -200,7 +213,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
             SearchedMessage(
               roomId: room.id,
               eventId: event.eventId,
-              roomName: room.getLocalizedDisplayname(),
+              roomName: room.getLocalizedDisplayname(ruMatrixLocalizations),
               senderName: _senderName(room, event.senderId),
               body: eventLabel(event).replaceAll('\n', ' ').trim(),
               timestamp: event.originServerTs,
@@ -230,7 +243,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
   static String _senderName(Room room, String senderId) {
     final name = room
         .unsafeGetUserFromMemoryOrFallback(senderId)
-        .calcDisplayname();
+        .calcDisplayname(i18n: ruMatrixLocalizations);
     if (name.isNotEmpty) return sanitizeForText(name);
     final local = senderId.split(':').first;
     final fallback = local.startsWith('@') ? local.substring(1) : senderId;
@@ -256,6 +269,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
           topic: (c.topic ?? '').replaceAll('\n', ' ').trim(),
           avatarMxc: c.avatarUrl?.toString(),
           memberCount: c.numJoinedMembers,
+          joinRule: c.joinRule ?? JoinRule.public,
         ),
     ];
     if (trimmed.isValidMatrixIdStrict() &&
@@ -279,6 +293,7 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
               topic: (c.topic ?? '').replaceAll('\n', ' ').trim(),
               avatarMxc: c.avatarUrl?.toString(),
               memberCount: c.numJoinedMembers,
+              joinRule: c.joinRule ?? JoinRule.public,
             ),
           );
         }
@@ -295,6 +310,66 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
     await _joinRoom(roomId);
     await wait.timeout(const Duration(seconds: 30));
     return roomId;
+  }
+
+  static const _knockedRoomsKey = 'knock.knocked_rooms';
+
+  Future<Set<String>> _knockedIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getStringList(_knockedRoomsKey)?.toSet() ?? {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _setKnocked(String roomId, bool knocked) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ids = prefs.getStringList(_knockedRoomsKey)?.toSet() ?? {};
+      if (knocked) {
+        ids.add(roomId);
+      } else {
+        ids.remove(roomId);
+      }
+      await prefs.setStringList(_knockedRoomsKey, ids.toList());
+    } catch (e, s) {
+      getIt<Talker>().error('[chats] save knocked rooms failed', e, s);
+    }
+  }
+
+  @override
+  Future<RoomPreview> fetchRoomPreview(String roomIdOrAlias) async {
+    final summary = await _client.getRoomSummary(roomIdOrAlias);
+    final local = _client.getRoomById(summary.roomId);
+    final stored = await _knockedIds();
+    return RoomPreview(
+      roomId: summary.roomId,
+      name: (summary.name?.isNotEmpty ?? false)
+          ? summary.name!
+          : (summary.canonicalAlias ?? summary.roomId),
+      topic: (summary.topic ?? '').replaceAll('\n', ' ').trim(),
+      avatarMxc: summary.avatarUrl?.toString(),
+      memberCount: summary.numJoinedMembers,
+      joinRule: summary.joinRule ?? ServerCapabilities.publicJoinRule,
+      knocked:
+          summary.membership == Membership.knock ||
+          local?.membership == Membership.knock ||
+          stored.contains(summary.roomId),
+    );
+  }
+
+  @override
+  Future<String> knockRoom(String roomId) async {
+    final knockedId = await _client.knockRoom(roomId);
+    await _setKnocked(knockedId, true);
+    return knockedId;
+  }
+
+  @override
+  Future<void> cancelKnock(String roomId) async {
+    await _client.getRoomById(roomId)?.leave();
+    await _setKnocked(roomId, false);
   }
 
   @override
@@ -403,9 +478,66 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
     }
   }
 
+  String? _inviteReason(Room room) {
+    if (room.membership != Membership.invite) return null;
+    final userId = _client.userID;
+    if (userId == null) return null;
+    final reason = room
+        .getState(EventTypes.RoomMember, userId)
+        ?.content
+        .tryGet<String>('reason')
+        ?.trim();
+    if (reason == null || reason.isEmpty) return null;
+    return sanitizeForText(reason);
+  }
+
   @override
   Future<void> declineInvite(String roomId) async {
     await _client.getRoomById(roomId)?.leave();
+  }
+
+  @override
+  Future<List<SearchedUser>> directChatPartners() async {
+    final ownId = _client.userID;
+    final partners = <String, SearchedUser>{};
+    for (final room in _client.rooms) {
+      if (!room.isDirectChat || room.membership != Membership.join) continue;
+      final partnerId = room.directChatMatrixID;
+      if (partnerId == null || partnerId == ownId) continue;
+      partners.putIfAbsent(
+        partnerId,
+        () => SearchedUser(
+          userId: partnerId,
+          displayName: _senderName(room, partnerId),
+          avatarMxc: room
+              .unsafeGetUserFromMemoryOrFallback(partnerId)
+              .avatarUrl
+              ?.toString(),
+        ),
+      );
+    }
+    final result = partners.values.toList()
+      ..sort(
+        (a, b) =>
+            a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+      );
+    return result;
+  }
+
+  @override
+  Future<void> inviteUser(
+    String roomId,
+    String userId, {
+    String? reason,
+  }) async {
+    final room = _client.getRoomById(roomId);
+    if (room == null) {
+      throw StateError('Комната не найдена: $roomId');
+    }
+    await room.invite(
+      userId,
+      reason: reason?.trim().isEmpty ?? true ? null : reason?.trim(),
+    );
   }
 
   @override
@@ -434,6 +566,13 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
   }
 
   @override
+  Future<bool> isRoomMuted(String roomId) async {
+    final room = _client.getRoomById(roomId);
+    if (room == null) return false;
+    return room.pushRuleState == PushRuleState.dontNotify;
+  }
+
+  @override
   Future<void> setPinned(String roomId, bool pinned) async {
     final room = _client.getRoomById(roomId);
     if (room == null) {
@@ -449,5 +588,37 @@ class ChatsRepositoryImpl(final Client _client) implements ChatsRepository {
       throw StateError('Комната не найдена: $roomId');
     }
     await room.leave();
+  }
+
+  final _mentionsOnlyController = StreamController<Set<String>>.broadcast();
+
+  Future<Set<String>> _mentionsOnlyIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(mentionsOnlyRoomsKey)?.toSet() ?? <String>{};
+  }
+
+  @override
+  Future<void> setNotificationMode(String roomId, NotificationMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final ids =
+        prefs.getStringList(mentionsOnlyRoomsKey)?.toSet() ?? <String>{};
+    if (mode == NotificationMode.mentions) {
+      ids.add(roomId);
+    } else {
+      ids.remove(roomId);
+    }
+    await prefs.setStringList(mentionsOnlyRoomsKey, ids.toList());
+    if (!_mentionsOnlyController.isClosed) _mentionsOnlyController.add(ids);
+  }
+
+  @override
+  Stream<Set<String>> watchMentionsOnlyRooms() async* {
+    yield await _mentionsOnlyIds();
+    yield* _mentionsOnlyController.stream;
+  }
+
+  @override
+  Future<bool> mentionsOnlySupported() async {
+    return ServerCapabilities.supportsMentionsOnly(_client.globalPushRules);
   }
 }

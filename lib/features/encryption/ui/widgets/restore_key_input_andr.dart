@@ -1,6 +1,7 @@
 import 'package:convetchat/app/adaptive/adaptive_loading_indicator.dart';
 import 'package:convetchat/features/encryption/ui/widgets/unlock_error_text.dart';
 import 'package:material_3_expressive/components/buttons/m3e_buttons.dart';
+import 'package:material_3_expressive/components/icon_buttons/m3e_icon_buttons.dart';
 import 'package:material_ui/material_ui.dart';
 
 class const RestoreKeyInputAndr({
@@ -26,7 +27,8 @@ class const RestoreKeyInputAndr({
       onSubmitted: onSubmitted,
       decoration: InputDecoration(
         hintText: 'Кодовая фраза или ключ',
-        prefixIcon: IconButton(
+        prefixIcon: M3EIconButton(
+          variant: .standard,
           icon: Icon(
             obscureText
                 ? Icons.visibility_rounded

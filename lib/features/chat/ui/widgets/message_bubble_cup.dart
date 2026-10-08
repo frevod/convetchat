@@ -124,7 +124,32 @@ class const MessageBubbleCup({
                         );
                       },
                     ),
-                  if (deleted)
+                  if (deleted && message.redactedVisibleBody != null)
+                    Column(
+                      crossAxisAlignment: .stretch,
+                      mainAxisSize: .min,
+                      children: [
+                        MessageDeletedLabel(color: placeholderColor),
+                        Text(
+                          message.redactedBy == null
+                              ? 'Видно модераторам'
+                              : 'Удалил(а) ${message.redactedBy}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: placeholderColor,
+                          ),
+                        ),
+                        Text(
+                          message.redactedVisibleBody!,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontStyle: .italic,
+                            color: placeholderColor,
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (deleted)
                     MessageDeletedLabel(color: placeholderColor)
                   else if (undecryptable)
                     MessageDeletedLabel(

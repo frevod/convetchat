@@ -57,6 +57,14 @@ class _PhotoTileState() extends State<_PhotoTile> {
     if (widget.message.isOwn) {
       if (!mounted) return;
       setState(() => _fullReady = true);
+      try {
+        final full = await context.read<ChatCubit>().mediaBytes(
+          eventId: widget.message.id,
+          thumb: false,
+        );
+        if (!mounted) return;
+        setState(() => _fullBytes = full);
+      } catch (_) {}
       return;
     }
     try {
@@ -113,9 +121,7 @@ class _PhotoTileState() extends State<_PhotoTile> {
     return FutureBuilder<Uint8List>(
       future: _thumb,
       builder: (context, snapshot) {
-        final storedFull = _fullBytes;
-        final full = _fullReady ? storedFull : null;
-        final bytes = full ?? snapshot.data;
+        final bytes = _fullBytes ?? snapshot.data;
         if (bytes != null) {
           final Widget? center = _downloading
               ? const CupertinoActivityIndicator(radius: 20)
@@ -141,10 +147,10 @@ class _PhotoTileState() extends State<_PhotoTile> {
             message: widget.message,
             onLinkTap: widget.onLinkTap,
             onTap: _fullReady
-                ? () => _openViewer(context, full ?? bytes)
+                ? () => _openViewer(context, bytes)
                 : _download,
             center: center,
-            child: full != null
+            child: _fullReady
                 ? image
                 : ImageFiltered(
                     imageFilter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
