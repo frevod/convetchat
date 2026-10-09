@@ -101,6 +101,29 @@ class EncryptionRepositoryImpl(final Client _client)
     await _client.updateUserDeviceKeys();
     final userId = _client.userID;
     if (userId == null) return [];
+    final crossSigning = _client.encryption?.crossSigning;
+    final masterKey = _client.userDeviceKeys[userId]?.masterKey;
+    getIt<Talker>().info(
+      '[e2ee:devices] crossSigning: enabled=${crossSigning?.enabled}, '
+      'isSelfSigned=${crossSigning?.isSelfSigned}, '
+      'masterKeyPresent=${masterKey != null}, '
+      'masterKeyVerified=${masterKey?.verified}',
+    );
+    final all =
+        _client.userDeviceKeys[userId]?.deviceKeys.values.toList() ?? [];
+    for (final d in all) {
+      final signers =
+          d.signatures?.entries
+              .map((e) => '${e.key}[${e.value.keys.join(',')}]')
+              .join(', ') ??
+          'none';
+      getIt<Talker>().info(
+        '[e2ee:devices] id=${d.deviceId}, name=${d.deviceDisplayName}, '
+        'verified=${d.verified}, blocked=${d.blocked}, '
+        'chain=${d.hasValidSignatureChain(verifiedByTheirMasterKey: true)}, '
+        'signatures=$signers',
+      );
+    }
     final devices =
         _client.userDeviceKeys[userId]?.deviceKeys.values
             .where(
