@@ -64,6 +64,7 @@ class EncryptionRepositoryImpl(final Client _client)
       rethrow;
     }
     await _setupDehydratedDevice(keyOrPassphrase);
+    await signOwnDevice(keyOrPassphrase);
   }
 
   Future<void> _setupDehydratedDevice(String keyOrPassphrase) async {
@@ -86,6 +87,10 @@ class EncryptionRepositoryImpl(final Client _client)
     try {
       await _client.encryption?.crossSigning.selfSign(
         keyOrPassphrase: keyOrPassphrase,
+      );
+      getIt<Talker>().info(
+        '[e2ee:restore] selfSign done, '
+        'isSelfSigned=${_client.encryption?.crossSigning.isSelfSigned}',
       );
     } catch (e, s) {
       getIt<Talker>().error(
