@@ -56,7 +56,11 @@ class EncryptionRepositoryImpl(final Client _client)
     try {
       await _client.restoreCryptoIdentity(keyOrPassphrase, selfSign: false);
     } catch (e, s) {
-      getIt<Talker>().error('[e2ee:restore] restoreCryptoIdentity failed', e, s);
+      getIt<Talker>().error(
+        '[e2ee:restore] restoreCryptoIdentity failed',
+        e,
+        s,
+      );
       rethrow;
     }
     await _setupDehydratedDevice(keyOrPassphrase);
@@ -141,7 +145,14 @@ class EncryptionRepositoryImpl(final Client _client)
     if (devices == null) {
       throw Exception('Список устройств ещё не загружен, попробуйте снова');
     }
-    final eligible = devices.deviceKeys.values
+    final all = devices.deviceKeys.values.toList();
+    getIt<Talker>().info(
+      '[e2ee:verify] sending request to ${all.length} own device(s) '
+      '(deviceId=*): ${[for (final d in all) '{id=${d.deviceId}, name=${d.deviceDisplayName}, '
+            'verified=${d.verified}, blocked=${d.blocked}, '
+            'lastActive=${d.lastActive}}'].join(', ')}',
+    );
+    final eligible = all
         .where((d) => d.hasValidSignatureChain(verifiedByTheirMasterKey: true))
         .map((d) => d.deviceId)
         .toList();
@@ -152,6 +163,11 @@ class EncryptionRepositoryImpl(final Client _client)
       );
     }
     final verification = await devices.startVerification();
+    getIt<Talker>().info(
+      '[e2ee:verify] request sent: tx=${verification.transactionId}, '
+      'state=${verification.state.name}, '
+      'eligible(master-signed)=${eligible.join(', ')}',
+    );
     return verification;
   }
 
@@ -211,11 +227,7 @@ class EncryptionRepositoryImpl(final Client _client)
       if (storedKey == null || storedKey.isEmpty) return;
       await _setupDehydratedDevice(storedKey);
     } catch (e, s) {
-      getIt<Talker>().error(
-        '[e2ee:dehydrated] setup on enable failed',
-        e,
-        s,
-      );
+      getIt<Talker>().error('[e2ee:dehydrated] setup on enable failed', e, s);
     }
   }
 

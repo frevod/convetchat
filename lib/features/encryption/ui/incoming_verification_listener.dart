@@ -16,6 +16,11 @@ void initIncomingVerificationListener() {
   _subscription = client.onKeyVerificationRequest.stream.listen((
     request,
   ) async {
+    getIt<Talker>().info(
+      '[e2ee:incoming] request received: tx=${request.transactionId}, '
+      'sender=${request.userId}, fromDevice=${request.deviceId}, '
+      'state=${request.state.name}',
+    );
     final context =
         getIt<GoRouter>().routerDelegate.navigatorKey.currentContext;
     if (context == null || !context.mounted) {
@@ -27,12 +32,20 @@ void initIncomingVerificationListener() {
     }
 
     final verified = await VerificationSheet.show(context, request);
+    getIt<Talker>().info(
+      '[e2ee:incoming] sheet closed: tx=${request.transactionId}, '
+      'verified=$verified, state=${request.state.name}',
+    );
     if (!verified || !context.mounted) return;
 
     try {
       await getIt<EncryptionRepository>().requestMissingSessions();
     } catch (e, s) {
-      getIt<Talker>().error('[e2ee:incoming] requestMissingSessions failed', e, s);
+      getIt<Talker>().error(
+        '[e2ee:incoming] requestMissingSessions failed',
+        e,
+        s,
+      );
     }
   });
 }
