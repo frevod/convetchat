@@ -19,6 +19,7 @@ class const SecurityPageCup({super.key}) extends StatefulWidget {
 
 class _SecurityPageCupState() extends State<SecurityPageCup> {
   bool? _backupReady;
+  bool? _dehydratedEnabled;
   bool _appLockEnabled = false;
   bool _biometricsEnabled = false;
   bool _biometricsAvailable = false;
@@ -31,6 +32,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
   void initState() {
     super.initState();
     _checkBackup();
+    _loadDehydrated();
     _loadLock();
     _loadShareMode();
   }
@@ -44,6 +46,34 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
       });
     } catch (e, s) {
       getIt<Talker>().error('[security] check backup state failed', e, s);
+    }
+  }
+
+  Future<void> _loadDehydrated() async {
+    try {
+      final enabled = await getIt<EncryptionRepository>()
+          .isDehydratedDevicesEnabled();
+      if (!mounted) return;
+      setState(() => _dehydratedEnabled = enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[security] read dehydrated flag failed', e, s);
+    }
+  }
+
+  Future<void> _onDehydratedChanged(bool value) async {
+    final previous = _dehydratedEnabled;
+    setState(() => _dehydratedEnabled = value);
+    try {
+      await getIt<EncryptionRepository>().setDehydratedDevicesEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[security] toggle dehydrated failed', e, s);
+      if (!mounted) return;
+      setState(() => _dehydratedEnabled = previous ?? !value);
+      AdaptiveSnackbar.show(
+        context: context,
+        message: 'Не удалось применить настройку',
+        type: .error,
+      );
     }
   }
 
@@ -66,35 +96,37 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
     }
   }
 
-  Future<void> _onBackupToggle(bool value) async {
-    if (value) {
+  Future<void> _onBackupAction() async {
+    final ready = _backupReady;
+    if (ready == null) return;
+    if (!ready) {
       context.go('/backup');
-    } else {
-      final confirmed = await showCupertinoDialog<bool>(
-        context: context,
-        builder: (context) => CupertinoAlertDialog(
-          title: const Text('Сбросить резервную копию?'),
-          content: const Text(
-            'Ключи шифрования будут пересозданы. '
-            'Старые сообщения могут стать недоступны.',
-          ),
-          actions: [
-            CupertinoDialogAction(
-              isDestructiveAction: true,
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Сбросить'),
-            ),
-            CupertinoDialogAction(
-              isDefaultAction: true,
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Отмена'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true || !mounted) return;
-      context.go('/backup?reset=true');
+      return;
     }
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (context) => CupertinoAlertDialog(
+        title: const Text('Сбросить резервную копию?'),
+        content: const Text(
+          'Ключи шифрования будут пересозданы. '
+          'Старые сообщения могут стать недоступны.',
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Сбросить'),
+          ),
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Отмена'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    context.go('/backup?reset=true');
   }
 
   Future<void> _setAppLock(bool value) async {
@@ -213,6 +245,7 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
   @override
   Widget build(BuildContext context) {
     final backupReady = _backupReady;
+    final dehydratedEnabled = _dehydratedEnabled;
     return CupertinoPageScaffold(
       navigationBar: CupertinoNavigationBar(middle: const Text('Безопасность')),
       child: SafeArea(
@@ -232,14 +265,35 @@ class _SecurityPageCupState() extends State<SecurityPageCup> {
                   CupertinoListTile(
                     leading: const Icon(CupertinoIcons.lock_shield),
                     title: const Text('Резервное копирование чатов'),
-                    subtitle: Text(backupReady ? 'Включено' : 'Выключено'),
+                    subtitle: Text(
+                      backupReady
+                          ? 'Включено · нажмите, чтобы сбросить'
+                          : 'Выключено · нажмите, чтобы настроить',
+                    ),
+                    trailing: const CupertinoListTileChevron(),
+                    onTap: () => unawaited(_onBackupAction()),
+                  ),
+                if (dehydratedEnabled == null)
+                  const CupertinoListTile(
+                    leading: Icon(CupertinoIcons.cloud_fill),
+                    title: Text('Dehydrated-устройство'),
+                    subtitle: Text('Проверка…'),
+                  )
+                else
+                  CupertinoListTile(
+                    leading: const Icon(CupertinoIcons.cloud_fill),
+                    title: const Text('Dehydrated-устройство'),
+                    subtitle: const Text(
+                      'Приём ключей, пока устройства офлайн. Нужен MSC3814 на сервере',
+                    ),
                     trailing: CupertinoSwitch(
-                      value: backupReady,
+                      value: dehydratedEnabled,
                       onChanged: (bool v) {
-                        unawaited(_onBackupToggle(v));
+                        unawaited(_onDehydratedChanged(v));
                       },
                     ),
-                    onTap: () => unawaited(_onBackupToggle(!backupReady)),
+                    onTap: () =>
+                        unawaited(_onDehydratedChanged(!dehydratedEnabled)),
                   ),
               ],
             ),

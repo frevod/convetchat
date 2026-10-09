@@ -20,6 +20,7 @@ class const SecurityPageAndr({super.key}) extends StatefulWidget {
 
 class _SecurityPageAndrState() extends State<SecurityPageAndr> {
   bool? _backupReady;
+  bool? _dehydratedEnabled;
   bool _appLockEnabled = false;
   bool _biometricsEnabled = false;
   bool _biometricsAvailable = false;
@@ -32,6 +33,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
   void initState() {
     super.initState();
     _checkBackup();
+    _loadDehydrated();
     _loadLock();
     _loadShareMode();
   }
@@ -45,6 +47,34 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
       });
     } catch (e, s) {
       getIt<Talker>().error('[security] check backup state failed', e, s);
+    }
+  }
+
+  Future<void> _loadDehydrated() async {
+    try {
+      final enabled = await getIt<EncryptionRepository>()
+          .isDehydratedDevicesEnabled();
+      if (!mounted) return;
+      setState(() => _dehydratedEnabled = enabled);
+    } catch (e, s) {
+      getIt<Talker>().error('[security] read dehydrated flag failed', e, s);
+    }
+  }
+
+  Future<void> _onDehydratedChanged(bool value) async {
+    final previous = _dehydratedEnabled;
+    setState(() => _dehydratedEnabled = value);
+    try {
+      await getIt<EncryptionRepository>().setDehydratedDevicesEnabled(value);
+    } catch (e, s) {
+      getIt<Talker>().error('[security] toggle dehydrated failed', e, s);
+      if (!mounted) return;
+      setState(() => _dehydratedEnabled = previous ?? !value);
+      AdaptiveSnackbar.show(
+        context: context,
+        message: 'Не удалось применить настройку',
+        type: .error,
+      );
     }
   }
 
@@ -67,23 +97,25 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
     }
   }
 
-  Future<void> _onBackupToggle(bool value) async {
-    if (value) {
+  Future<void> _onBackupAction() async {
+    final ready = _backupReady;
+    if (ready == null) return;
+    if (!ready) {
       context.go('/backup');
-    } else {
-      final confirmed = await AdaptiveDialog.confirm(
-        context: context,
-        title: 'Сбросить резервную копию?',
-        message:
-            'Ключи шифрования будут пересозданы. '
-            'Старые сообщения могут стать недоступны.',
-        confirmLabel: 'Сбросить',
-        cancelLabel: 'Отмена',
-        isDestructive: true,
-      );
-      if (!confirmed || !mounted) return;
-      context.go('/backup?reset=true');
+      return;
     }
+    final confirmed = await AdaptiveDialog.confirm(
+      context: context,
+      title: 'Сбросить резервную копию?',
+      message:
+          'Ключи шифрования будут пересозданы. '
+          'Старые сообщения могут стать недоступны.',
+      confirmLabel: 'Сбросить',
+      cancelLabel: 'Отмена',
+      isDestructive: true,
+    );
+    if (!confirmed || !mounted) return;
+    context.go('/backup?reset=true');
   }
 
   Future<void> _setAppLock(bool value) async {
@@ -196,6 +228,7 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
   @override
   Widget build(BuildContext context) {
     final backupReady = _backupReady;
+    final dehydratedEnabled = _dehydratedEnabled;
     final lockItems = [
       M3EListItem(
         trailing: _lockLoading
@@ -283,26 +316,42 @@ class _SecurityPageAndrState() extends State<SecurityPageAndr> {
         children: [
           const SettingsSectionHeader(title: 'Резервная копия'),
           M3EList(
-            itemCount: 1,
-            onTap: (_) {
-              if (backupReady != null) _onBackupToggle(!backupReady);
+            itemCount: 2,
+            onTap: (index) {
+              if (index == 0) {
+                _onBackupAction();
+              } else {
+                if (dehydratedEnabled != null) {
+                  _onDehydratedChanged(!dehydratedEnabled);
+                }
+              }
             },
             itemBuilder: (context, index) {
+              if (index == 1) {
+                return M3EListItem(
+                  trailing: M3ESwitch(
+                    value: dehydratedEnabled == true,
+                    onChanged: dehydratedEnabled == null
+                        ? null
+                        : _onDehydratedChanged,
+                  ),
+                  leading: const Icon(Icons.cloud_sync_rounded),
+                  headline: 'Dehydrated-устройство',
+                  supportingText: dehydratedEnabled == null ? 'Проверка…' : 'Приём ключей шифрования, пока все устройства офлайн. Требует поддержки MSC3814 на сервере',
+                  onTap: dehydratedEnabled == null
+                      ? null
+                      : () => _onDehydratedChanged(!dehydratedEnabled),
+                );
+              }
               return M3EListItem(
-                trailing: M3ESwitch(
-                  value: backupReady == true,
-                  onChanged: backupReady == null ? null : _onBackupToggle,
-                ),
                 leading: const Icon(Icons.backup_rounded),
                 headline: 'Резервное копирование чатов',
                 supportingText: backupReady == null
                     ? 'Проверка…'
                     : backupReady
-                    ? 'Включено'
-                    : 'Выключено',
-                onTap: backupReady == null
-                    ? null
-                    : () => _onBackupToggle(!backupReady),
+                    ? 'Включено · нажмите, чтобы сбросить'
+                    : 'Выключено · нажмите, чтобы настроить',
+                onTap: backupReady == null ? null : _onBackupAction,
               );
             },
           ),
